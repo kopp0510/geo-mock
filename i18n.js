@@ -3,7 +3,9 @@
 // 為什麼不用 Chrome 原生的 `_locales/` + chrome.i18n.getMessage：那套跟隨的是
 // 瀏覽器的 UI 語言，擴充自己**沒辦法**在執行時切換。這是開發工具，想看英文介面
 // 時不該逼人去改整台瀏覽器的語言設定，所以字串表自己拿著，語言存在 storage 裡。
-// （`_locales/` 仍用在 manifest 的擴充名稱與描述 —— 那兩個 Chrome 只認原生機制。）
+// （`_locales/` 只留給 manifest 的**擴充描述** —— 那個 Chrome 只認原生機制。
+// 名稱刻意不走 __MSG_：tools/verify.js 的 no-bridge 變體會抄走 manifest.name，
+// 而變體目錄沒有 _locales，Chrome 會整個拒絕載入它。第 1 項靜態斷言擋著這條。）
 //
 // popup 與 options 兩頁共用這一份。載入順序是 defaults.js → i18n.js → 頁面自己的
 // script，跟 content script 那邊一樣有順序依賴。
@@ -228,7 +230,7 @@ const GEO_MOCK_I18N = (() => {
     // 找得到，?? 會判為非 nullish，於是三層退回整個失效、raw 變成一個函式，
     // 下一行的 raw.replace 直接丟 TypeError —— 而這個例外發生在 apply() 的迴圈裡，
     // 後面的元素全都不會被翻譯，popup 會永遠停在「讀取中…」。
-    // resolve() 與 tools/verify.js 的 checkLocales() 都特地防了這一類，只有這裡漏掉。
+    // resolve() 與 tools/verify.js 的 checkLocales() 也都用 hasOwn 防這一類。
     const table = STRINGS[locale];
     const fallback = STRINGS[FALLBACK];
     const raw = Object.hasOwn(table, key) ? table[key]
@@ -257,8 +259,11 @@ const GEO_MOCK_I18N = (() => {
 
   // STRINGS 一併交出去，讓 tools/verify.js 能靜態比對兩份表的 key 有沒有漂掉 ——
   // 少一個 key 的那一邊會默默 fallback 成英文，畫面上看不出是漏譯還是刻意不譯。
-  // current() 給 geocode.js 用：Nominatim 的 accept-language 要跟著介面語系走
-  return { t, apply, setLocale, resolve, current: () => locale, LOCALES, STRINGS };
+  // resolve() 不匯出 —— 只有 setLocale() 內部用得到，外面拿它沒有意義
+  // （要知道目前語系用 current()，要驗證偏好值用 LOCALES）。
+  // current() 給 geocode.js 用：Nominatim 的 accept-language 要跟著介面語系走。
+  // STRINGS 給 tools/verify.js 靜態比對兩份表用。
+  return { t, apply, setLocale, current: () => locale, LOCALES, STRINGS };
 })();
 
 // node 端（給驗證腳本比對兩份表的 key 是否一致）用；瀏覽器裡沒有 module，會跳過。

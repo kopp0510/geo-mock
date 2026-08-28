@@ -70,8 +70,8 @@ navigator.permissions.query({ name: 'geolocation' })
 
   <footer>
     看到設定的座標 = 覆寫生效。看到錯誤或你的真實位置 = 沒生效或開關是關的。<br>
-    切換 popup 開關或改座標之後，要<strong>重新整理這一頁</strong>才會反映
-    —— 設定即時推送尚未實作。
+    切換 popup 開關或改座標之後**不必**重新整理這一頁 —— 設定會即時推送過來。
+    但畫面上的座標是上一次呼叫定位的結果，要按「重新定位」再問一次才會更新。
   </footer>
 
 <script>

@@ -37,7 +37,7 @@ function fail(msg) {
   process.exit(1);
 }
 
-// 三項座標斷言共用。got 可能是 undefined（陷阱 1 那項讀的是頁面上的 window.__early，
+// 七項座標斷言共用（第 2、3、5、7、8、12、13 項）。got 可能是 undefined（陷阱 1 那項讀的是頁面上的 window.__early，
 // 沒排隊成功時就沒有這個值），所以先擋掉再比。
 function sameCoords(got, want) {
   return !!got
@@ -116,9 +116,9 @@ function startServer() {
   });
 }
 
-// 純靜態檢查：兩件會靜默回退的政策設定 —— 「查詢跑在 service worker」，以及改寫
-// User-Agent 的 DNR 規則。共同點是壞掉不會有症狀：搜尋照樣有結果，要到被 Nominatim
-// 封鎖那天才會發現。
+// 純靜態檢查：三組會靜默回退的設定 —— 「查詢跑在 service worker」、改寫 User-Agent
+// 的 DNR 規則、以及語系字串表。共同點是壞掉不會有症狀：畫面照常、搜尋照樣有結果，
+// 要到被 Nominatim 封鎖、或有人回報「英文介面少一句話」那天才會發現。
 //
 // 刻意只讀檔比對，不送任何請求：自動化打 Nominatim 正是政策明文禁止的
 // （見 tools/CLAUDE.md「為什麼不驗地址搜尋」）。
@@ -333,7 +333,8 @@ function makeNoBridgeVariant() {
 }
 
 // 讀 chrome://extensions 上已載入的擴充 id。
-// 這個擴充沒有 service worker，shadow DOM 是拿 id 最現成的路徑；
+// 早期這個擴充沒有 service worker，shadow DOM 是當時最現成的路徑。現在有 background.js
+// 了，理論上可以改用 playwright 的 context.serviceWorkers()，但這條還能用就先不動；
 // 回傳空陣列 = 擴充根本沒載入（manifest 指向不存在的檔案時，Chrome 會整個拒絕載入
 // 並彈錯誤視窗，但自動化流程裡看不到那個視窗，只會表現成 content script 沒生效）。
 async function loadedExtensionIds(page) {
@@ -404,7 +405,8 @@ async function cleanup({ ctx, profile }) {
       const frame = page.frames().find(f => f.url().includes('frame.html'));
       if (!frame) throw new Error('找不到 iframe —— tools/fixtures/test.html 沒嵌進去？');
       // 失敗要走 resolve 不要 reject：沒注入進 iframe 時原生會回 error，
-      // reject 的話整個區塊拋例外、後面十項全部沒跑，訊息變成「有測試未跑完」——
+      // reject 的話整個區塊拋例外、後面十一項全部沒跑（第 14 項雖在另一個瀏覽器區塊，
+      // 仍包在同一個外層 try 裡），訊息變成「有測試未跑完」——
       // 比「iframe 內也被覆寫 FAIL」難歸因得多。
       const framePos = await frame.evaluate(() => new Promise((res) => {
         navigator.geolocation.getCurrentPosition(

@@ -28,9 +28,11 @@ geo-mock/
 ├─ geocode.js         # Nominatim 查詢、快取、每秒 1 次閘門。由 background.js importScripts
 ├─ rules.json         # declarativeNetRequest 規則：送 Nominatim 前改寫 User-Agent
 ├─ popup.html / popup.js       # 啟用開關、地址搜尋、模式切換（固定／抖動）、
-│                             #   目前座標一覽、已存地點 chips、進階設定連結
-├─ options.html / options.js   # 座標與抖動半徑。最上面的「貼上座標」欄接 Google Maps
-│                             #   右鍵複製的「緯度, 經度」整串，拆進下面兩欄
+│                             #   目前座標一覽、已存地點 chips、
+│                             #   「這個網站不要覆寫」、語言選單、進階設定連結
+├─ options.html / options.js   # 座標與抖動半徑（按儲存才寫）、排除清單編輯器（即時存）。
+│                             #   最上面的「貼上座標」欄接 Google Maps 右鍵複製的
+│                             #   「緯度, 經度」整串，拆進下面兩欄
 ├─ icons/16.png 48.png 128.png
 └─ tools/             # 驗證腳本，不會被打包進擴充（見 tools/CLAUDE.md）
 ```
@@ -38,9 +40,12 @@ geo-mock/
 ## 架構約束（已定案，不重新討論）
 
 - 覆寫對象是 `navigator.geolocation`，必須跑在頁面自己的 JS 環境
-- **兩個 content script 都要 `all_frames: true`**：iframe 有自己的 JS 環境，
-  漏了其中一個的症狀是「主頁面正常、嵌在裡面的地圖顯示真實位置」，很難歸因。
-  `tools/verify.js` 第 3 項守著（測試頁嵌了 `fixtures/frame.html`）
+- **兩個 content script 都要 `all_frames: true` **與** `match_about_blank: true`**：
+  iframe 有自己的 JS 環境，漏了其中一個的症狀是「主頁面正常、嵌在裡面的地圖顯示
+  真實位置」，很難歸因。`all_frames` 只管有正常 URL 的 frame，**沒有 src 的
+  （`srcdoc` / `about:blank`）要靠 `match_about_blank`** —— widget 與部分地圖 SDK
+  就是那樣建 iframe 的，漏掉的症狀一模一樣。`tools/verify.js` 第 3 項兩種都驗
+  （測試頁嵌了 `fixtures/frame.html` 與一個 srcdoc frame）
 - **雙 content script 不可合併**：MAIN world 拿不到 `chrome.storage`，所以由
   ISOLATED world 的 `bridge.js` 讀設定、用 CustomEvent 推給 MAIN world 的 `inject.js`
 - **跨 world 的事件帶遞增序號**：`{ seq, settings }`，`inject.js` 只接受嚴格大於
@@ -172,7 +177,7 @@ geo-mock/
   頁面送一個很大的 seq 就能把後續真正的更新全部擋在門外。
 - **`getCurrentPosition` 可被繞過**：覆寫是實例上的賦值，
   `Geolocation.prototype.getCurrentPosition.call(navigator.geolocation, ...)` 走的是原生。
-  同樣屬 SPEC 陷阱 4 的範圍，第三版再處理。
+  同樣屬本檔陷阱 4 的範圍。
 - **設定送不到時最壞花掉呼叫端 timeout 的兩倍**：見 `inject.js` 逾時分支的註解。
   極端路徑，正常情況設定 20ms 內就到。有了即時推送之後這不再是終端狀態 ——
   設定晚到會帶著更大的序號把它接回去。

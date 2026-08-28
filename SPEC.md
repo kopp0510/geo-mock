@@ -55,7 +55,10 @@ jitter 是為了測試座標微幅飄動時 UI 的反應（釘子跳動、重複
 5. 目前座標與 accuracy 顯示
 6. 已存地點 chips + 新增按鈕（點 chip 套用、按 × 刪除，上限 12 個；
    名稱用行內輸入框，不用 `prompt()` —— 那在 extension popup 裡會連 popup 一起關掉）
-7. 底部：進階設定連結、語言選單
+7. 「這個網站不要覆寫」按鈕 —— 把目前這個站加進排除清單，再按一次恢復。
+   拿目前分頁的網址需要 `activeTab`；非 http(s) 的分頁（`chrome://`、擴充頁）
+   沒有可排除的 host，按鈕整個不出現
+8. 底部：進階設定連結、語言選單
 
 ## 語言
 
@@ -72,8 +75,16 @@ jitter 是為了測試座標微幅飄動時 UI 的反應（釘子跳動、重複
   同一個查詢在中英文底下回的地名不同
 - `inject.js` 印在頁面 console 的訊息不翻譯（MAIN world 拿不到字串表）
 
-Options 頁放不常改的欄位：jitter 半徑（已做），以及 altitude、altitudeAccuracy、
-heading、speed（未做，第三版）。
+Options 頁放的東西：
+
+- **貼上座標**欄 —— 接 Google Maps 右鍵複製的「緯度, 經度」整串，自動拆進下面兩欄
+  （`type=number` 的欄位吃不下逗號）
+- 緯度、經度、accuracy、jitter 半徑 —— 這幾個按「儲存」才寫入
+- **排除清單編輯器** —— 與上面幾欄不同，這裡是**即時存**的，因為 popup 那顆
+  「這個網站不要覆寫」也是即時的，兩邊行為要一致
+
+altitude、altitudeAccuracy、heading、speed 仍是未做，**未排程**（不在三版清單裡；
+目前 `inject.js` 一律回 `null`，還沒撞到需要它們的網站）。
 
 ## Geocoding
 
@@ -144,8 +155,10 @@ Chrome 根本不替擴充頁的 fetch 送這個 header。等於兩條識別路�
    這一種，其他權限（notifications、camera…）原樣轉給原生。覆寫沒開、或設定
    始終沒到時也原樣轉回原生 —— 不能自作主張回 granted，那會讓網站以為拿得到
    位置，結果 `getCurrentPosition` 走原生跳出授權對話框
-10. `all_frames: true` 支援 iframe —— **已做**，兩個 content script 都要加。
-    沒加的症狀是「主頁面正常、嵌在裡面的地圖顯示真實位置」
+10. iframe 支援 —— **已做**。兩個 content script 都要 `all_frames: true`
+    **與 `match_about_blank: true`**：前者管有正常 URL 的 frame，後者管沒有 src 的
+    （`srcdoc` / `about:blank`，widget 與部分地圖 SDK 就是那樣建的）。
+    漏掉任一個的症狀都是「主頁面正常、嵌在裡面的地圖顯示真實位置」
 11. per-site 排除清單 —— **已做**。刻意不叫黑／白名單：這裡不是在擋誰，
     只是「這幾個站別動」。**預設空的**，所以裝上之後的行為跟以前一樣（全部生效）；
     列進清單的網站走真實定位，其餘照常覆寫。比對 `location.host`（**含埠號**，

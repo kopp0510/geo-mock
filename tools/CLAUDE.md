@@ -55,7 +55,7 @@ node tools/verify.js        # exit 0 = 全部通過
    frame：`fixtures/frame.html`（有 src，歸 all_frames 管）與一個 `srcdoc` frame
    （沒有 src，歸 match_about_blank 管 —— widget 與部分地圖 SDK 就是這樣建的，
    漏掉的症狀跟漏掉 all_frames 一模一樣）。在兩個 frame 裡各重新呼叫一次定位。**失敗要走 resolve 不要 reject** ——
-   沒注入進去時原生會回 error，reject 的話整個區塊拋例外、後面十項全都沒跑，
+   沒注入進去時原生會回 error，reject 的話整個區塊拋例外、後面十一項全都沒跑，
    訊息變成「有測試未跑完」，比一個明確的 FAIL 難歸因得多
 4. **`permissions.query` 對 geolocation 回 granted**，而且**別的權限不受影響**
    （順帶查一次 camera，它不該變成 granted）。少了後半，「連其他權限一起騙」
@@ -72,8 +72,9 @@ node tools/verify.js        # exit 0 = 全部通過
    **注意這一項只驗座標路徑**：「切換開關也即時生效」目前只有手動驗證涵蓋
    （第 13 項雖然測開關，但它刻意重新載入頁面，靠 `announced` 重置取得乾淨訊號）
 9. **jitter 模式在設定座標周圍抖動**（options 存半徑 → popup 切到抖動 →
-   **同樣不重整**測試頁 → 連取 8 個樣本）。三件事一起驗：真的抖了、沒抖出半徑、
-   每次都不一樣 —— 少了最後一項，「只在切換模式時抖一次然後固定住」也會綠燈。
+   **同樣不重整**測試頁 → 連取 8 個樣本）。四件事一起驗：真的抖了、沒抖出半徑、
+   抖得夠開（下界，少了它半徑被誤設成更小的值也會綠燈）、每次都不一樣 ——
+   少了最後一項，「只在切換模式時抖一次然後固定住」也會綠燈。
    驗完會把 mode 改回 fixed，後面才是在測開關而不是順便測到模式。
    **注意這條斷言是實作的鏡子**：`metersFrom()` 用的投影常數與 `jitterCoords()`
    同一組，所以它保證不了「經度換算正確」—— 若哪天 `/ shrink` 那個除法掉了，

@@ -15,16 +15,12 @@
 // 這頁只會被 test.html 用 iframe 嵌進去，用來驗 all_frames 有沒有生效。
 // 跟 test.html 一樣只呼叫 navigator.geolocation，完全不查 IP。
 const out = document.getElementById('out');
+// 不往 window 上掛結果：verify.js 驗這個 frame 的方式是在裡面**重新呼叫**一次
+// 定位（比讀一個載入當下的快照可靠），掛了也沒人讀，只會讓下一個人以為
+// 有斷言在看它。畫面上這行字才是給人看的。
 navigator.geolocation.getCurrentPosition(
-  p => {
-    const at = { lat: p.coords.latitude, lng: p.coords.longitude };
-    window.__framePos = at;
-    out.textContent = `${at.lat}, ${at.lng}`;
-  },
-  e => {
-    window.__frameErr = e.code;
-    out.textContent = 'error code=' + e.code;
-  },
+  p => { out.textContent = `${p.coords.latitude}, ${p.coords.longitude}`; },
+  e => { out.textContent = 'error code=' + e.code; },
   { timeout: 5000 }
 );
 </script>
