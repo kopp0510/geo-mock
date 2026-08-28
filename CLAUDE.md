@@ -18,6 +18,7 @@ geo-mock/
 ├─ SPEC.md            # 功能規格
 ├─ CLAUDE.md          # 本檔：架構約束與開發流程
 ├─ manifest.json
+├─ defaults.js        # 設定預設值，bridge/options/verify 三方共用的唯一一份
 ├─ inject.js          # world: MAIN, run_at: document_start — 實際覆寫 geolocation
 ├─ bridge.js          # world: ISOLATED, run_at: document_start — 讀 storage 推給 inject
 ├─ popup.html / popup.js
@@ -32,6 +33,9 @@ geo-mock/
 - **雙 content script 不可合併**：MAIN world 拿不到 `chrome.storage`，所以由
   ISOLATED world 的 `bridge.js` 讀設定、用 CustomEvent 推給 MAIN world 的 `inject.js`
 - manifest 的 `content_scripts` 用 `world` 欄位需要 Chrome 111+
+- **ISOLATED world 是多檔載入，順序有語意依賴**：`["defaults.js", "bridge.js"]`，
+  `defaults.js` 必須排在前面。順序反了或檔案漏掉，`bridge.js` 會拿不到
+  `GEO_MOCK_DEFAULTS`；那條路徑現在會 `console.error` 並退回真實定位，不會靜默失效
 - `manifest.json` 需 `host_permissions: ["https://nominatim.openstreetmap.org/"]`
 
 ## 不要做的事

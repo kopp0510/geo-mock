@@ -13,7 +13,8 @@
     status.className = kind;
   }
 
-  // 只讀本頁負責的欄位，避免把 enabled 之類的設定一起帶進來又寫回去
+  // 讀的是完整預設（含 enabled），但只回填與寫出 FIELDS ——
+  // enabled 歸 popup 管，這裡不能順手把一份陳舊的值寫回去。
   chrome.storage.local.get(GEO_MOCK_DEFAULTS, (saved) => {
     if (chrome.runtime.lastError) {
       say('讀取設定失敗:' + chrome.runtime.lastError.message, 'err');

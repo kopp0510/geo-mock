@@ -16,12 +16,24 @@ manifest.json 沒有引用它們，Chrome 也不會載入。
 node tools/verify.js        # exit 0 = 全部通過
 ```
 
-三項斷言：
+四項斷言：
 
-1. 定位覆寫生效（載入後呼叫 → 回傳 `bridge.js` DEFAULTS 的座標）
+1. 定位覆寫生效（載入後呼叫 → 回傳 `defaults.js` 的座標）
 2. 設定未達時的請求排隊（`document_start` 搶先呼叫 → 被壓住十幾 ms 後正確回應）
-3. 設定永不到達時仍會回應（腳本會即時造一個「只有 inject.js、沒有 bridge.js」的
+3. Options 頁存的座標會生效（存一組非預設值 → content script 讀到新值，
+   lat/lng/accuracy 都驗；順帶截圖到 `.screenshots/options.png`）
+4. 設定永不到達時仍會回應（腳本會即時造一個「只有 inject.js、沒有 bridge.js」的
    擴充變體來複現這個失敗模式；修正前這裡會永久懸掛）
+
+第 3 項需要 extension id，靠讀 `chrome://extensions` 的 shadow DOM 取得
+（這個擴充沒有 service worker，沒有更現成的路徑）。**這條路徑綁死 Chrome 內部 UI
+的自訂元素名稱，Chrome 改版重構就會斷** —— 斷掉時的症狀是第 3 項拋例外，
+不會誤判成 PASS。
+
+`makeNoBridgeVariant()` 用**白名單**組變體 manifest，不是「複製全部再刪掉不要的」。
+變體目錄只放 `inject.js`，任何指向其他檔案的欄位（`icons`、`options_ui`、
+之後的 `action.default_popup`）都會讓 Chrome 整個拒絕載入該擴充並彈錯誤視窗。
+新增這類 manifest 欄位時**不需要**動這裡，這正是用白名單的原因。
 
 ## 前提與陷阱
 
@@ -43,6 +55,7 @@ node tools/verify.js        # exit 0 = 全部通過
 
 ## 與上層的關係
 
-`verify.js` 的 `EXPECT` 是 `../bridge.js` 中 `DEFAULTS` 的手抄副本 —— 無 build 工具
-下沒有共用常數的辦法。**改動 `bridge.js` 的 lat/lng 必須同步改這裡**，否則驗證會
-比對到過時座標而報 FAIL，失敗訊息會把人誤導到 `inject.js` 去找問題。
+`verify.js` 的 `EXPECT` 直接 `require('../defaults.js')`，與擴充共用同一份預設值。
+**改預設座標只要改 `defaults.js` 那一份**，這裡不必動。
+
+（早期版本這裡是手抄副本，需要兩邊同步；那個陷阱已經拆掉了，別再裝回去。）

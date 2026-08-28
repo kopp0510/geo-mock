@@ -27,6 +27,15 @@
     send(settings);
   }
 
+  // defaults.js 沒載入時要吵。下面的 catch 會把 ReferenceError 一起吃掉，
+  // 症狀是「裝了、也啟用了，但每個網站都回真實定位，console 一片乾淨」——
+  // 正是本專案最想避免的那種靜默失效。
+  if (typeof GEO_MOCK_DEFAULTS === 'undefined') {
+    console.error('[geo-mock] defaults.js 未載入，覆寫停用 —— 檢查 manifest 的 content_scripts 順序');
+    publish(DISABLED);
+    return;
+  }
+
   try {
     chrome.storage.local.get(GEO_MOCK_DEFAULTS, (settings) => {
       // context 在讀取途中失效時，callback 仍可能被呼叫，但帶著 lastError
@@ -39,6 +48,8 @@
   } catch (err) {
     // 「Extension context invalidated」這類同步例外：擴充剛被 reload 或停用。
     // 這是比 inject.js 那道逾時更早、更便宜的一道防線。
+    // 一定要印出來，否則非預期的程式錯誤也會在這裡消失無蹤。
+    console.warn('[geo-mock] 讀取設定失敗，改走真實定位:', err);
     publish(DISABLED);
   }
 })();

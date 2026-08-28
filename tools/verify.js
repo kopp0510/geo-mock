@@ -20,12 +20,20 @@ const EXT_DIR = path.resolve(__dirname, '..');
 const FIXTURES = path.join(__dirname, 'fixtures');
 const PORT = Number(process.env.PORT) || 0;
 const SHOTS = path.join(EXT_DIR, '.screenshots');
-const MOVED = { lat: 35.6812, lng: 139.7671 };   // 東京車站 —— 刻意挑一組非預設值
+const MOVED = { lat: 35.6812, lng: 139.7671, accuracy: 55 };   // 東京車站 —— 刻意挑一組非預設值
 const EXPECT = require(path.join(EXT_DIR, 'defaults.js'));   // 與擴充共用同一份預設值
 
 function fail(msg) {
   console.error('\n✗ ' + msg + '\n');
   process.exit(1);
+}
+
+// 三項座標斷言共用。got 可能是 undefined（陷阱 1 那項讀的是頁面上的 window.__early，
+// 沒排隊成功時就沒有這個值），所以先擋掉再比。
+function sameCoords(got, want) {
+  return !!got
+    && Math.abs(got.lat - want.lat) < 1e-6
+    && Math.abs(got.lng - want.lng) < 1e-6;
 }
 
 // playwright 刻意不列為專案相依（SPEC：不引入 build 工具）。
@@ -105,11 +113,37 @@ function startServer() {
 function makeNoBridgeVariant() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'geo-mock-nobridge-'));
   const mf = JSON.parse(fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf8'));
-  mf.content_scripts = mf.content_scripts.filter(cs => cs.js.includes('inject.js'));
-  delete mf.icons;
-  fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(mf, null, 2));
+
+  // 白名單，不是「複製整份再刪掉不要的」。變體目錄只放 inject.js，
+  // 任何指向其他檔案的欄位（icons、options_ui、之後的 action.default_popup）
+  // 都會讓 Chrome 在載入時彈「無法載入擴充功能」的錯誤視窗。
+  // 黑名單寫法每次 manifest 加新欄位都會再犯一次，所以這裡只列出變體真正需要的。
+  const variant = {
+    manifest_version: mf.manifest_version,
+    name: mf.name + ' (no bridge)',
+    version: mf.version,
+    minimum_chrome_version: mf.minimum_chrome_version,
+    content_scripts: mf.content_scripts.filter(cs => cs.js.includes('inject.js')),
+  };
+
+  fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(variant, null, 2));
   fs.copyFileSync(path.join(EXT_DIR, 'inject.js'), path.join(dir, 'inject.js'));
   return dir;
+}
+
+// 讀 chrome://extensions 上已載入的擴充 id。
+// 這個擴充沒有 service worker，shadow DOM 是拿 id 最現成的路徑；
+// 回傳空陣列 = 擴充根本沒載入（manifest 指向不存在的檔案時，Chrome 會整個拒絕載入
+// 並彈錯誤視窗，但自動化流程裡看不到那個視窗，只會表現成 content script 沒生效）。
+async function loadedExtensionIds(page) {
+  await page.goto('chrome://extensions');
+  return page.evaluate(() => {
+    const mgr = document.querySelector('extensions-manager');
+    const list = mgr && mgr.shadowRoot && mgr.shadowRoot.querySelector('extensions-item-list');
+    const items = list && list.shadowRoot
+      ? list.shadowRoot.querySelectorAll('extensions-item') : [];
+    return Array.from(items).map(i => i.id);
+  });
 }
 
 async function launch(chromium, executablePath, extDir) {
@@ -156,46 +190,43 @@ async function cleanup({ ctx, profile }) {
         );
       }));
       console.log('載入後呼叫          : ' + JSON.stringify(pos));
-      results.push(['定位覆寫生效',
-        Math.abs(pos.lat - EXPECT.lat) < 1e-6 && Math.abs(pos.lng - EXPECT.lng) < 1e-6]);
+      results.push(['定位覆寫生效', sameCoords(pos, EXPECT)]);
 
       // 2) 陷阱 1：頁面在設定送達前搶先呼叫，必須被排隊後補回
       const early = await page.evaluate(() => ({ pos: window.__early, err: window.__earlyErr }));
       console.log('document_start 搶先 : ' + JSON.stringify(early));
-      results.push(['設定未達時的請求排隊（陷阱 1）', !!early.pos
-        && Math.abs(early.pos.lat - EXPECT.lat) < 1e-6
-        && Math.abs(early.pos.lng - EXPECT.lng) < 1e-6]);
+      results.push(['設定未達時的請求排隊（陷阱 1）', sameCoords(early.pos, EXPECT)]);
 
       // 3) Options 頁：改存一組非預設座標，content script 必須讀到新值
       const ext = await a.ctx.newPage();
-      await ext.goto('chrome://extensions');
-      // 這個擴充沒有 service worker，拿 extension id 最現成的路徑就是這裡的 shadow DOM
-      const extId = await ext.evaluate(() => {
-        const mgr = document.querySelector('extensions-manager');
-        const list = mgr && mgr.shadowRoot && mgr.shadowRoot.querySelector('extensions-item-list');
-        const item = list && list.shadowRoot && list.shadowRoot.querySelector('extensions-item');
-        return item ? item.id : null;
-      });
-      if (!extId) throw new Error('讀不到 extension id，擴充可能沒載入');
+      const ids = await loadedExtensionIds(ext);
+      if (!ids.length) {
+        throw new Error('讀不到 extension id —— 可能是擴充沒載入，'
+          + '也可能是 Chrome 改了 chrome://extensions 的 shadow DOM 結構');
+      }
+      const extId = ids[0];
 
       await ext.goto(`chrome-extension://${extId}/options.html`);
       await ext.fill('#lat', String(MOVED.lat));
       await ext.fill('#lng', String(MOVED.lng));
+      await ext.fill('#accuracy', String(MOVED.accuracy));
       await ext.click('button[type=submit]');
       await ext.waitForFunction(() => document.getElementById('status').className === 'ok');
       fs.mkdirSync(SHOTS, { recursive: true });
       await ext.screenshot({ path: path.join(SHOTS, 'options.png') });
 
-      const after = await page.goto(url).then(() => page.evaluate(() => new Promise((res, rej) => {
+      await page.goto(url);
+      const after = await page.evaluate(() => new Promise((res, rej) => {
         navigator.geolocation.getCurrentPosition(
-          p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+          p => res({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }),
           e => rej(new Error('geolocation error code=' + e.code)),
           { timeout: 5000 }
         );
-      })));
+      }));
       console.log('Options 存檔後      : ' + JSON.stringify(after));
-      results.push(['Options 頁存的座標會生效', Math.abs(after.lat - MOVED.lat) < 1e-6
-        && Math.abs(after.lng - MOVED.lng) < 1e-6]);
+      // 連 accuracy 一起驗，否則它在某一環被吃掉（例如 set 只寫兩個 key）四項仍全綠
+      results.push(['Options 頁存的座標會生效',
+        sameCoords(after, MOVED) && after.acc === MOVED.accuracy]);
     } finally {
       await cleanup(a);
     }
@@ -204,6 +235,17 @@ async function cleanup({ ctx, profile }) {
     noBridgeDir = makeNoBridgeVariant();
     const b = await launch(chromium, executablePath, noBridgeDir);
     try {
+      // 先確認變體真的載入。變體 manifest 若指向目錄裡不存在的檔案（options.html、
+      // 之後的 popup.html），Chrome 會整個拒絕載入 —— 那樣 inject.js 根本沒注入，
+      // getCurrentPosition 走的是原生、照樣會回應，這一項就會「因為錯的理由」PASS。
+      const probe = await b.ctx.newPage();
+      const variantIds = await loadedExtensionIds(probe);
+      await probe.close();
+      if (!variantIds.length) {
+        throw new Error('no-bridge 變體沒載入成功 —— 檢查 makeNoBridgeVariant 的白名單'
+          + '是否漏了某個指向檔案的 manifest 欄位');
+      }
+
       const page = await b.ctx.newPage();
       await page.goto(url);
       // 呼叫端帶 timeout: 1000。修好之前這裡兩個 callback 都不會被呼叫，

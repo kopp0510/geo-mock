@@ -3,8 +3,10 @@
 // 三個地方共用：bridge.js（content script，ISOLATED world）、options.js（擴充頁面）、
 // tools/verify.js（node）。無 build 工具，所以靠 content_scripts 的多檔載入
 // 與尾端的 module.exports 同時餵給瀏覽器和 node，不要改成 ESM。
-// 用 var 是刻意的：content script 之間共享的是同一個 world 的全域，
-// 頂層 const 的 lexical scope 在跨檔存取上不保險。
+// 用 var 而非 const 是刻意的，但理由不是「const 跨檔讀不到」——
+// 已實測改成 const 時 verify.js 四項仍全 PASS，classic script 的頂層 const
+// 後續檔案讀得到。真正的理由是：var 掛在 globalThis 上，且重複宣告不會丟
+// SyntaxError —— 萬一這支檔案被二次注入，const 會直接炸掉整個 content script。
 var GEO_MOCK_DEFAULTS = {
   enabled: true,      // 第一版沒有 popup 開關，預設開著否則無從驗證（task 3 再檢討）
   lat: 25.0330,       // 台北 101 附近
