@@ -21,27 +21,31 @@ const SEARCH = 'geo-mock:search';
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type !== SEARCH) return undefined;   // 不是給我們的，讓別的 listener 處理
 
-  // 錯誤訊息會原樣顯示在 popup 上，所以要用使用者選的語言。service worker 隨時
-  // 會被回收重啟，記憶體裡的語系留不住，每次都從 storage 讀一次最省事。
-  chrome.storage.local.get({ locale: GEO_MOCK_DEFAULTS.locale }, ({ locale }) => {
-    GEO_MOCK_I18N.setLocale(locale);
+  // 語系要**先拿到再做事**：錯誤訊息、送出的 accept-language、寫進去的快取鍵
+  // 三者都吃它。service worker 隨時會被回收重啟，記憶體裡的語系留不住，
+  // 而 storage.get 是非同步的 —— 把下面這些留在 callback 外面同步跑完的話，
+  // 重啟後的第一次搜尋一律走預設語系（實測就是英文）。
+  chrome.storage.local.get({ locale: GEO_MOCK_DEFAULTS.locale }, (stored) => {
+    // 讀不到就用預設語系繼續，不要因為讀不到語言就整個搜尋失敗
+    GEO_MOCK_I18N.setLocale(
+      chrome.runtime.lastError ? GEO_MOCK_DEFAULTS.locale : stored.locale);
+
+    if (typeof msg.query !== 'string') {
+      // 少了這道，normalize() 的 query.trim() 會拋，使用者看到的是
+      // 「Cannot read properties of undefined」這種對他毫無意義的訊息。
+      sendResponse({ error: GEO_MOCK_I18N.t('noQuery') });
+      return;
+    }
+
+    GEO_MOCK_GEOCODE.search(msg.query).then(
+      (results) => sendResponse({ results }),
+      // 用 then 的第二個參數而不是接一個 .catch：後者連上面那句 sendResponse
+      // 自己丟的例外也會接到，變成同一個請求回覆兩次。
+      // String(...) 兜底是因為 error 分支若送出 { error: undefined }，
+      // popup 那邊的 if (res.error) 判為 falsy，會往下 render(undefined)。
+      (err) => sendResponse({ error: String(err?.message || err) }),
+    );
   });
-
-  if (typeof msg.query !== 'string') {
-    // 少了這道，normalize() 的 query.trim() 會拋，使用者看到的是
-    // 「Cannot read properties of undefined」這種對他毫無意義的訊息。
-    sendResponse({ error: GEO_MOCK_I18N.t('noQuery') });
-    return true;
-  }
-
-  GEO_MOCK_GEOCODE.search(msg.query).then(
-    (results) => sendResponse({ results }),
-    // 用 then 的第二個參數而不是接一個 .catch：後者連上面那句 sendResponse
-    // 自己丟的例外也會接到，變成同一個請求回覆兩次。
-    // String(...) 兜底是因為 error 分支若送出 { error: undefined }，
-    // popup 那邊的 if (res.error) 判為 falsy，會往下 render(undefined)。
-    (err) => sendResponse({ error: String(err?.message || err) }),
-  );
 
   // true = 稍後才回覆。popup 若已經關掉，這個回覆送不出去（會靜默失敗），
   // 但上面那條 promise 仍會跑完 —— 快取落地正是靠這一點，

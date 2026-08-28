@@ -55,7 +55,10 @@ const GEO_MOCK_GEOCODE = (() => {
   // 同一個查詢在 zh-TW 與 en 底下 Nominatim 回的地名不同，共用一份快取的話
   // 切了語言仍會看到上一個語系的候選清單。
   function normalize(query) {
-    return GEO_MOCK_I18N.current() + '|' + query.trim().replace(/\s+/g, ' ').toLowerCase();
+    const text = query.trim().replace(/\s+/g, ' ').toLowerCase();
+    // 空字串要原樣回空的，別加前綴 —— 加了之後 search() 裡那道
+    // `if (!key) return []` 就永遠不成立，空查詢會一路送到 Nominatim。
+    return text && `${GEO_MOCK_I18N.current()}|${text}`;
   }
 
   // chrome.storage.local.get 回的是整包物件，取單一鍵要寫 computed-key 解構、
@@ -100,10 +103,13 @@ const GEO_MOCK_GEOCODE = (() => {
 
   async function fetchRemote(query) {
     await gate();
-    // query 進來時已經帶著「語系|」前綴（見 normalize），送出前要拆掉
-    const [lang, ...rest] = query.split('|');
+    // query 進來時已經帶著「語系|」前綴（見 normalize），送出前要拆掉。
+    // 只切第一個 '|'：查詢字串本身可能含 '|'，整串 split 再 join 兜回來是繞遠路。
+    const sep = query.indexOf('|');
+    const lang = query.slice(0, sep);
+    const text = query.slice(sep + 1);
     const url = `${ENDPOINT}?format=jsonv2&limit=${LIMIT}`
-      + `&accept-language=${lang}&q=${encodeURIComponent(rest.join('|'))}`;
+      + `&accept-language=${lang}&q=${encodeURIComponent(text)}`;
 
     // 讀 body 也要包在 try 裡：captive portal／公司 proxy 會回一頁 HTML，
     // 那時炸的是 res.json() 而不是 fetch，漏在外面的話使用者會看到

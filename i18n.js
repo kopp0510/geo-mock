@@ -165,16 +165,21 @@ const GEO_MOCK_I18N = (() => {
     },
   };
 
-  // storage 存的偏好；'auto' 以外的值才是真的鎖定語言
-  const LOCALES = ['auto', 'zh-TW', 'en'];
+  // storage 存的偏好；'auto' 以外的值才是真的鎖定語言。
+  // 從 STRINGS 長出來，多一種語言時不必記得回來補這一行。
+  const LOCALES = ['auto', ...Object.keys(STRINGS)];
 
   let locale = FALLBACK;
 
   // 'auto' 時跟隨瀏覽器。chrome.i18n 在擴充頁一定有，但 getUILanguage 回的是
   // 'zh-TW' / 'en-US' / 'ja' 這類 BCP 47，只看語言部分就夠了。
+  //
+  // 認得的語系直接以 STRINGS 為準，不再另外寫死一份語言清單 —— 兩邊分開寫的話，
+  // 加第三種語言時很容易只加了字串表，卻忘了這裡，症狀是「選了就是沒反應」。
+  // 用 hasOwn 而不是 in：storage 讀回來的值可能是 'toString' 這種原型鏈上的名字。
   function resolve(pref) {
-    if (pref === 'zh-TW' || pref === 'en') return pref;
-    const ui = (chrome.i18n && chrome.i18n.getUILanguage && chrome.i18n.getUILanguage()) || '';
+    if (Object.hasOwn(STRINGS, pref)) return pref;
+    const ui = chrome.i18n?.getUILanguage?.() || '';
     return ui.toLowerCase().startsWith('zh') ? 'zh-TW' : FALLBACK;
   }
 
@@ -187,13 +192,11 @@ const GEO_MOCK_I18N = (() => {
   }
 
   // 找不到 key 就回 key 本身：畫面上會出現一個突兀的英數字串，
-  // 比默默顯示空白容易發現。{0} {1} 依序換成後面的參數。
+  // 比默默顯示空白容易發現。{0} {1} 依序換成後面的參數；
+  // 沒給對應參數的佔位符原樣留著，同樣是為了讓漏帶參數看得出來。
   function t(key, ...args) {
-    const table = STRINGS[locale] || STRINGS[FALLBACK];
-    const raw = table[key] !== undefined ? table[key] : (STRINGS[FALLBACK][key] || key);
-    return args.length
-      ? raw.replace(/\{(\d+)\}/g, (m, i) => (args[i] !== undefined ? args[i] : m))
-      : raw;
+    const raw = STRINGS[locale][key] ?? STRINGS[FALLBACK][key] ?? key;
+    return raw.replace(/\{(\d+)\}/g, (placeholder, i) => args[i] ?? placeholder);
   }
 
   // 把 data-i18n="key" 的元素填上文字，data-i18n-attr="placeholder:key,title:key"
@@ -205,8 +208,11 @@ const GEO_MOCK_I18N = (() => {
     }
     for (const el of scope.querySelectorAll('[data-i18n-attr]')) {
       for (const pair of el.dataset.i18nAttr.split(',')) {
-        const [attr, key] = pair.split(':');
-        if (attr && key) el.setAttribute(attr.trim(), t(key.trim()));
+        const [attr, key] = pair.split(':').map((part) => part.trim());
+        // 半套的標記（少了冒號、或空白的屬性名）直接跳過。setAttribute('') 會丟
+        // InvalidCharacterError，一個手誤就會讓整頁的翻譯停在那一行。
+        if (!attr || !key) continue;
+        el.setAttribute(attr, t(key));
       }
     }
   }

@@ -135,10 +135,13 @@ function checkLocales(mf) {
   const langs = Object.keys(tables);
   if (langs.length < 2) return 'i18n.js 的字串表少於兩種語言';
 
+  // hasOwn 而不是 in：叫 toString / constructor 的 key 會從原型鏈上「找到」，
+  // 真的漏譯了也照樣過關。
   const [base, ...rest] = langs;
+  const baseKeys = Object.keys(tables[base]);
   for (const lang of rest) {
-    const missing = Object.keys(tables[base]).filter(k => !(k in tables[lang]));
-    const extra = Object.keys(tables[lang]).filter(k => !(k in tables[base]));
+    const missing = baseKeys.filter(k => !Object.hasOwn(tables[lang], k));
+    const extra = Object.keys(tables[lang]).filter(k => !Object.hasOwn(tables[base], k));
     if (missing.length || extra.length) {
       return `字串表 ${lang} 與 ${base} 的 key 對不上 —— `
         + `${lang} 缺: ${missing.join(', ') || '無'}；多: ${extra.join(', ') || '無'}`;

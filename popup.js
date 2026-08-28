@@ -44,19 +44,23 @@
     el.accuracy.textContent = current.accuracy === undefined ? '–' : current.accuracy + ' m';
   }
 
+  // 狀態列的唯一寫入口。class 與 data-state 一定要一起寫，分開寫遲早會漂掉。
+  // data-state 是給 tools/verify.js 的、不隨語系變的訊號：比對顯示文字的話
+  // i18n 一上就斷；只看 class 也不行 —— 下面的 fail() 同樣是 'state off'，
+  // 「存檔成功」與「存檔失敗」會分不出來。
+  function paintState(text, tone, state) {
+    el.state.textContent = text;
+    el.state.className = 'state ' + tone;
+    el.state.dataset.state = state;
+  }
+
   function setState(on) {
-    el.state.textContent = on ? t('stateOn') : t('stateOff');
-    el.state.className = 'state ' + (on ? 'on' : 'off');
-    // 給 tools/verify.js 用的、不隨語系變的訊號。比對顯示文字的話 i18n 一上就斷；
-    // 只看 class 也不行 —— 下面的 fail() 同樣會設成 'state off'，
-    // 「存檔成功」與「存檔失敗」會分不出來。
-    el.state.dataset.state = on ? 'on' : 'off';
+    const tone = on ? 'on' : 'off';
+    paintState(on ? t('stateOn') : t('stateOff'), tone, tone);
   }
 
   function fail(msg) {
-    el.state.textContent = msg;
-    el.state.className = 'state off';
-    el.state.dataset.state = 'error';
+    paintState(msg, 'off', 'error');
   }
 
   // 開關在 HTML 裡是 disabled 的，讀到設定才交出控制權。
@@ -102,6 +106,11 @@
           fail(t('saveFailed', chrome.runtime.lastError.message));
           return;
         }
+        // 這行不能省：relabel() 換語言時要靠 current.enabled 重畫狀態列。
+        // 不同步的話「切開關 → 換語言」會讓狀態列跳回切換前的值 ——
+        // 連 data-state 一起寫錯，而 tools/verify.js 第 10 項就靠那個訊號。
+        // （current.mode 在 onModeChange 有同步，這裡漏了就是不對稱的來源。）
+        current.enabled = on;
         setState(on);
       });
     } catch (err) {

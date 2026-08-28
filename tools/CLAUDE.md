@@ -25,7 +25,8 @@ node tools/verify.js        # exit 0 = 全部通過
      **版本號那項是刻意的同步閘門**：`rules.json` 的 UA 是手抄的版本號
      （靜態規則讀不到 manifest），只改 manifest 升版這裡就會紅
    - **語系字串表**：`i18n.js` 兩份表的 key 必須一一對應（漏譯會 fallback 成英文，
-     畫面上看不出是漏了還是刻意不譯）；`default_locale` 指到的 `_locales/` 目錄要存在；
+     畫面上看不出是漏了還是刻意不譯）。比對用 `Object.hasOwn` 而不是 `in` ——
+     後者會從原型鏈上「找到」叫 `toString`、`constructor` 這類的 key，漏譯照樣過關；`default_locale` 指到的 `_locales/` 目錄要存在；
      **`manifest.name` 不可以是 `__MSG_...__`** —— `makeNoBridgeVariant()` 會抄走
      `name`，而變體目錄沒有 `_locales`，Chrome 會拒絕載入它，最後一項就會用
      「變體沒載入」這個跟真正問題無關的理由失敗
