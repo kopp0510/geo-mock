@@ -710,7 +710,7 @@ async function cleanup({ ctx, profile }) {
       //
       // 全程不重整測試頁 —— 清單變更也是走 storage.onChanged 那條推送路徑。
       const host = new URL(url).host;
-      const askUntil = (wantError) => page.evaluate(async (want) => {
+      const askUntil = (target, wantError) => target.evaluate(async (want) => {
         const ask = () => new Promise(res => navigator.geolocation.getCurrentPosition(
           p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
           e => res({ error: e.code }),
@@ -725,20 +725,43 @@ async function cleanup({ ctx, profile }) {
         }
       }, wantError);
 
+      // 先在頁面裡塞一個**跨來源**的 frame：同一個 server，但 host 字串是
+      // 127.0.0.1:PORT 而清單上寫的是 localhost:PORT。這個 frame 自己的 host
+      // 不在清單上，所以只有「最上層文件被排除」那條路徑能讓它停止覆寫 ——
+      // 沒有這一段的話，bridge.js 的 topHost() 從頭到尾不會被執行到，
+      // 而它正是「排除的是網站不是 frame」那個修正的全部內容。
+      const crossOrigin = `http://127.0.0.1:${server.address().port}/frame.html`;
+      await page.evaluate(async (src) => {
+        const f = document.createElement('iframe');
+        f.src = src;
+        f.style.cssText = 'width:100%;height:4rem';
+        document.body.append(f);
+        await new Promise(done => f.addEventListener('load', done, { once: true }));
+      }, crossOrigin);
+      const crossFrame = page.frames().find(f => f.url().includes('127.0.0.1'));
+      if (!crossFrame) throw new Error('跨來源 frame 沒建起來');
+
       await ext.evaluate((h) => new Promise(r =>
         chrome.storage.local.set({ excludedSites: [h] }, r)), host);
-      const whenExcluded = await askUntil(true);
+      const whenExcluded = await askUntil(page, true);
+      const crossExcluded = await askUntil(crossFrame, true);
 
       await ext.evaluate(() => new Promise(r =>
         chrome.storage.local.set({ excludedSites: [] }, r)));
-      const whenBack = await askUntil(false);
+      const whenBack = await askUntil(page, false);
+      const crossBack = await askUntil(crossFrame, false);
 
       console.log('排除清單            : '
-        + JSON.stringify({ host, whenExcluded, whenBack }));
-      // 兩個方向都要驗：只驗「排除後不覆寫」的話，一個永遠回真實定位的迴歸
-      // 也會綠燈；只驗「拿掉後恢復」則根本沒測到排除本身。
-      results.push(['排除清單上的網站走真實定位，拿掉後恢復',
-        !!whenExcluded.error && sameCoords(whenBack, LIVE)]);
+        + JSON.stringify({ host, whenExcluded, whenBack })
+        + '\n跨來源 frame（' + new URL(crossOrigin).host + '）: '
+        + JSON.stringify({ crossExcluded, crossBack }));
+      // 三件事一起驗：
+      //   · 排除後主頁面不覆寫 —— 只驗這個的話，「永遠回真實定位」的迴歸也會綠燈
+      //   · 拿掉後恢復 —— 只驗這個則根本沒測到排除本身
+      //   · 被排除頁面裡的**跨來源 frame** 也停 —— 這一條才走得到 topHost()
+      results.push(['排除清單上的網站走真實定位（連頁內的跨來源 frame），拿掉後恢復',
+        !!whenExcluded.error && sameCoords(whenBack, LIVE)
+        && !!crossExcluded.error && sameCoords(crossBack, LIVE)]);
 
       // 13) Popup 開關關掉 → 不再覆寫。第 2～12 項全在測「開啟」狀態，
       //    enabled: false 這條路徑到這裡才第一次被驗到。
