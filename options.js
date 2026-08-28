@@ -5,18 +5,32 @@
 
   const { t } = GEO_MOCK_I18N;
 
-  // 先用「跟隨瀏覽器」套一次，讀到設定再套第二次，免得選了 English 的人
-  // 每次開這頁都先閃一下中文。
-  GEO_MOCK_I18N.setLocale('auto');
-  GEO_MOCK_I18N.apply();
-
   const FIELDS = ['lat', 'lng', 'accuracy', 'jitterRadius'];
+  // 錯誤訊息要講欄位的名字，不是它的 id：「jitterRadius 不是有效的數字」
+  // 對使用者沒有意義。
+  const FIELD_NAMES = {
+    lat: 'latName', lng: 'lngName', accuracy: 'accuracyName', jitterRadius: 'radiusName',
+  };
   // 半徑沒有上限的話，多按幾個零就會讓抖動算出跨半個地球的座標。
   // inject.js 那邊會夾回合法範圍，但使用者看到的行為會很莫名。
   const JITTER_MAX = 100000;   // 公尺
   const el = Object.fromEntries(FIELDS.map(k => [k, document.getElementById(k)]));
   const form = document.getElementById('form');
   const status = document.getElementById('status');
+
+  // 先用「跟隨瀏覽器」套一次，讀到設定再套第二次，免得選了 English 的人
+  // 每次開這頁都先閃一下中文。
+  // **必須排在上面那些 const 之後**：applyAll() 讀 JITTER_MAX，提早呼叫會踩到
+  // TDZ，整支 script 拋掉 —— 症狀是欄位永遠空白、頁面看起來像沒載入。
+  GEO_MOCK_I18N.setLocale('auto');
+  applyAll();
+
+  // apply() 只管靜態的 data-i18n；帶參數的那一句它填不了，所以包在一起，
+  // 免得哪次只呼叫了 apply() 而讓 hint 停在上一個語系。
+  function applyAll() {
+    GEO_MOCK_I18N.apply();
+    document.getElementById('radiusHint').textContent = t('radiusHint', JITTER_MAX);
+  }
 
   function say(text, kind) {
     status.textContent = text;
@@ -32,11 +46,18 @@
     }
     // 語言在 popup 選，這裡只跟著跑
     GEO_MOCK_I18N.setLocale(saved.locale);
-    GEO_MOCK_I18N.apply();
-    // 這一句帶參數（上限值），apply() 填不了
-    document.getElementById('radiusHint').textContent = t('radiusHint', JITTER_MAX);
+    applyAll();
 
     for (const k of FIELDS) el[k].value = saved[k];
+  });
+
+  // popup 換語言時這一頁可能正開著。沒有這個監聽的話它會停在舊語言直到重新載入，
+  // 而 README 寫的是「選了立刻換」。locale 以外的鍵不用管 —— 這頁的欄位值
+  // 只在載入時讀一次，使用者正在編輯時被外部改動蓋掉才更糟。
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes.locale) return;
+    GEO_MOCK_I18N.setLocale(changes.locale.newValue);
+    applyAll();
   });
 
   // Google Maps 右鍵複製出來的是「緯度, 經度」一整串，
@@ -60,7 +81,9 @@
     const values = {};
     for (const k of FIELDS) {
       const n = el[k].valueAsNumber;
-      if (!Number.isFinite(n)) { say(t('notANumber', k), 'err'); el[k].focus(); return; }
+      if (!Number.isFinite(n)) {
+        say(t('notANumber', t(FIELD_NAMES[k])), 'err'); el[k].focus(); return;
+      }
       values[k] = n;
     }
     if (Math.abs(values.lat) > 90)  { say(t('latRange'), 'err'); el.lat.focus(); return; }

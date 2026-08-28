@@ -128,37 +128,117 @@ function checkPolicySetup() {
   return checkServiceWorker(mf) || checkUaRule(mf) || checkLocales(mf);
 }
 
-// 語系相關的靜態檢查。同樣是壞掉不會有症狀那一類：漏譯的 key 會 fallback 成
-// 英文，畫面上看不出是漏了還是刻意不譯。
+// 語系相關的靜態檢查。這一組的共同點是「壞了不會有症狀」—— 漏譯 fallback 成英文、
+// aria-label 被設成沒翻譯的 raw key、佔位符被吞掉，畫面上全都看不出來。
 function checkLocales(mf) {
-  const tables = require(path.join(EXT_DIR, 'i18n.js')).STRINGS;
+  const i18n = require(path.join(EXT_DIR, 'i18n.js'));
+  return checkStringTables(i18n.STRINGS)
+    || checkHtmlKeys(i18n.STRINGS)
+    || checkLocaleMenu(i18n)
+    || checkManifestMessages(mf);
+}
+
+const placeholdersOf = (text) =>
+  [...String(text).matchAll(/\{(\d+)\}/g)].map(m => m[1]).sort().join(',');
+
+// 兩份表的 key 要一一對應，同一個 key 的佔位符也要一樣多。佔位符少一邊的話那個
+// 語言會靜靜吞掉參數（例如英文的 radiusRange 少了 {0}，上限值就不見了，而句子
+// 仍讀得通）—— key 對得上，光比 key 抓不到。
+function checkStringTables(tables) {
   const langs = Object.keys(tables);
   if (langs.length < 2) return 'i18n.js 的字串表少於兩種語言';
 
-  // hasOwn 而不是 in：叫 toString / constructor 的 key 會從原型鏈上「找到」，
-  // 真的漏譯了也照樣過關。
   const [base, ...rest] = langs;
   const baseKeys = Object.keys(tables[base]);
   for (const lang of rest) {
+    // hasOwn 而不是 in：'toString' 這種名字在原型鏈上找得到，漏譯照樣過關
     const missing = baseKeys.filter(k => !Object.hasOwn(tables[lang], k));
     const extra = Object.keys(tables[lang]).filter(k => !Object.hasOwn(tables[base], k));
     if (missing.length || extra.length) {
       return `字串表 ${lang} 與 ${base} 的 key 對不上 —— `
         + `${lang} 缺: ${missing.join(', ') || '無'}；多: ${extra.join(', ') || '無'}`;
     }
+    for (const k of baseKeys) {
+      const a = placeholdersOf(tables[base][k]);
+      const b = placeholdersOf(tables[lang][k]);
+      if (a !== b) {
+        return `字串 ${k} 的佔位符對不上 —— ${base}: {${a || '無'}}，${lang}: {${b || '無'}}`;
+      }
+    }
   }
+  return null;
+}
 
-  // manifest 的 name 不能用 __MSG_...__：makeNoBridgeVariant 會把 name 抄進變體的
-  // manifest，而變體目錄沒有 _locales，Chrome 會整個拒絕載入 —— 最後一項會用
-  // 「變體沒載入」的理由失敗，跟真正的問題差了十萬八千里。
+// HTML 裡引用的 key 必須真的存在。data-i18n 打錯字會把 key 原樣印在畫面上
+// （至少看得見），但 data-i18n-attr 裡的 aria-label 打錯只有讀螢幕的人受害，
+// 肉眼與截圖都看不出來；少一個冒號更是被 apply() 刻意靜默跳過。
+function checkHtmlKeys(tables) {
+  const known = Object.values(tables)[0];
+  for (const page of ['popup.html', 'options.html']) {
+    const html = fs.readFileSync(path.join(EXT_DIR, page), 'utf8');
+    for (const m of html.matchAll(/data-i18n="([^"]*)"/g)) {
+      if (!Object.hasOwn(known, m[1])) return `${page} 的 data-i18n="${m[1]}" 在字串表裡沒有`;
+    }
+    for (const m of html.matchAll(/data-i18n-attr="([^"]*)"/g)) {
+      for (const pair of m[1].split(',')) {
+        const [attr, key] = pair.split(':').map(x => (x || '').trim());
+        if (!attr || !key) return `${page} 的 data-i18n-attr="${m[1]}" 格式不對（要 attr:key）`;
+        if (!Object.hasOwn(known, key)) {
+          return `${page} 的 data-i18n-attr 用了字串表沒有的 key: ${key}`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// LOCALES 是從 STRINGS 長出來的，但選單的 <option> 是手寫的 —— 加了第三種語言
+// 卻忘了補選項的話，症狀是「字串表有了但選不到」，正是那個派生要防的事。
+function checkLocaleMenu(i18n) {
+  const html = fs.readFileSync(path.join(EXT_DIR, 'popup.html'), 'utf8');
+  const menu = html.match(/<select id="locale"[\s\S]*?<\/select>/);
+  if (!menu) return 'popup.html 找不到 id="locale" 的語言選單';
+  const options = [...menu[0].matchAll(/value="([^"]*)"/g)].map(m => m[1]);
+  const missing = i18n.LOCALES.filter(l => !options.includes(l));
+  const extra = options.filter(o => !i18n.LOCALES.includes(o));
+  if (missing.length || extra.length) {
+    return `語言選單與 LOCALES 對不上 —— 選單缺: ${missing.join(', ') || '無'}；`
+      + `多: ${extra.join(', ') || '無'}`;
+  }
+  return null;
+}
+
+// manifest 的 __MSG_xxx__ 要在每一份 messages.json 裡都找得到，各份的 key 也要一致。
+function checkManifestMessages(mf) {
+  // makeNoBridgeVariant 會把 name 抄進變體 manifest，而變體目錄沒有 _locales，
+  // Chrome 會整個拒絕載入它 —— 最後一項會用「變體沒載入」這個跟真正問題無關的
+  // 理由失敗。
   if (String(mf.name).startsWith('__MSG_')) {
     return 'manifest 的 name 不能用 __MSG_ 佔位（no-bridge 變體會抄走它，見 tools/CLAUDE.md）';
   }
-  if (mf.default_locale) {
-    const dir = path.join(EXT_DIR, '_locales', mf.default_locale, 'messages.json');
-    if (!fs.existsSync(dir)) {
-      return `default_locale 是 ${mf.default_locale}，但 ${dir} 不存在 —— Chrome 會拒絕載入整個擴充`;
+  if (!mf.default_locale) return null;
+
+  const root = path.join(EXT_DIR, '_locales');
+  const dirs = fs.existsSync(root) ? fs.readdirSync(root) : [];
+  if (!dirs.includes(mf.default_locale)) {
+    return `default_locale 是 ${mf.default_locale}，但 _locales/${mf.default_locale} 不存在`
+      + ' —— Chrome 會拒絕載入整個擴充';
+  }
+
+  const used = [...JSON.stringify(mf).matchAll(/__MSG_(\w+)__/g)].map(m => m[1]);
+  let baseKeys = null;
+  for (const dir of dirs) {
+    const file = path.join(root, dir, 'messages.json');
+    if (!fs.existsSync(file)) return `_locales/${dir} 少了 messages.json`;
+    const messages = JSON.parse(fs.readFileSync(file, 'utf8'));
+    for (const key of used) {
+      if (!Object.hasOwn(messages, key)) {
+        return `manifest 用了 __MSG_${key}__，但 _locales/${dir}/messages.json 裡沒有`;
+      }
     }
+    const keys = Object.keys(messages).sort().join(',');
+    if (baseKeys === null) baseKeys = keys;
+    else if (keys !== baseKeys) return `_locales/${dir}/messages.json 的 key 與其他語系對不上`;
   }
   return null;
 }

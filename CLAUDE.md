@@ -45,8 +45,8 @@ geo-mock/
   （見「已知限制」）
 - **`bridge.js` 的 `WATCHED` 從 `GEO_MOCK_DEFAULTS` 派生，不可手抄**：漏了新欄位
   會讓「改那個欄位不會即時生效」靜默發生，而 UI 五處都寫著即時生效。
-  例外用 `NOT_WATCHED` 扣掉，每一個都要寫理由（目前只有 `places`：只有 popup
-  讀寫，存個地點不該驚動每個分頁）。`geocodeCache` / `geocodeLastAt` 不在 defaults
+  例外用 `NOT_WATCHED` 扣掉，每一個都要寫理由（目前是 `places` 與 `locale`，
+  兩者都只有擴充自己的頁面用得到，理由寫在 `bridge.js` 那幾行）。`geocodeCache` / `geocodeLastAt` 不在 defaults
   裡，本來就不會被派生進來
 - **推送出去的內容也只有 `WATCHED` 那幾個鍵**（`bridge.js` 的 `pick()`），不是整份
   設定。這個事件頁面監聽得到，整份送的話已存地點連同精確座標會被每個網站讀走。

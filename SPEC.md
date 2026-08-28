@@ -77,7 +77,7 @@ heading、speed（未做，第三版）。
 
 ## Geocoding
 
-使用 Nominatim：`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=zh-TW&q=...`
+使用 Nominatim：`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=<介面語系>&q=...`
 
 **使用政策必須遵守**（https://operations.osmfoundation.org/policies/nominatim/）。
 以下逐條抄自政策原文，不是摘要意譯：

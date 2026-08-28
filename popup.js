@@ -76,7 +76,8 @@
       // 語言先套，後面每一句訊息才會是對的語系
       GEO_MOCK_I18N.setLocale(s.locale);
       GEO_MOCK_I18N.apply();
-      el.locale.value = GEO_MOCK_I18N.LOCALES.includes(s.locale) ? s.locale : 'auto';
+      appliedLocale = GEO_MOCK_I18N.LOCALES.includes(s.locale) ? s.locale : 'auto';
+      el.locale.value = appliedLocale;
       el.locale.disabled = false;
 
       el.enabled.checked = !!s.enabled;
@@ -365,25 +366,37 @@
   // data-i18n 文字，動態產生的那些（狀態列、模式、chips）要自己再跑一次。
   function relabel() {
     GEO_MOCK_I18N.apply();
+    // apply() 會把 #state 寫成「讀取中…」（它帶著 data-i18n），所以 setState 一定
+    // 要緊接在後面同步跑，中間不能插 await —— 插了就會停在讀取中，而 data-state
+    // 說 off，tools/verify.js 第 10 項只看後者，會綠燈放行。
     setState(!!current.enabled);
     showMode();
     renderPlaces();
+    // #msg 裡那句是上一個語系寫的，留著只會半中半英。清掉比翻譯它省事 ——
+    // say() 沒有記下當初用的是哪個 key，要重畫得先做一套訊息狀態機。
+    say('');
   }
+
+  // 上一次真的存進去的偏好。存檔失敗時要把選單扳回它 —— 同檔的啟用開關與模式
+  // 都是這樣處理的（「不要讓 UI 顯示一個沒生效的狀態」），語言不該是例外。
+  let appliedLocale = 'auto';
 
   el.locale.addEventListener('change', () => {
     const pref = el.locale.value;
+    const failed = (message) => {
+      el.locale.value = appliedLocale;
+      say(t('saveFailed', message), true);
+    };
     try {
       chrome.storage.local.set({ locale: pref }, () => {
-        if (chrome.runtime.lastError) {
-          say(t('saveFailed', chrome.runtime.lastError.message), true);
-          return;
-        }
+        if (chrome.runtime.lastError) { failed(chrome.runtime.lastError.message); return; }
+        appliedLocale = pref;
         GEO_MOCK_I18N.setLocale(pref);
         relabel();
       });
     } catch (err) {
       console.error('[geo-mock] popup 儲存語言失敗:', err);
-      say(t('saveFailed', err.message), true);
+      failed(err.message);
     }
   });
 

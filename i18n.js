@@ -195,7 +195,16 @@ const GEO_MOCK_I18N = (() => {
   // 比默默顯示空白容易發現。{0} {1} 依序換成後面的參數；
   // 沒給對應參數的佔位符原樣留著，同樣是為了讓漏帶參數看得出來。
   function t(key, ...args) {
-    const raw = STRINGS[locale][key] ?? STRINGS[FALLBACK][key] ?? key;
+    // 用 Object.hasOwn 而不是 ?? ：'toString'、'constructor' 這種名字在原型鏈上
+    // 找得到，?? 會判為非 nullish，於是三層退回整個失效、raw 變成一個函式，
+    // 下一行的 raw.replace 直接丟 TypeError —— 而這個例外發生在 apply() 的迴圈裡，
+    // 後面的元素全都不會被翻譯，popup 會永遠停在「讀取中…」。
+    // resolve() 與 tools/verify.js 的 checkLocales() 都特地防了這一類，只有這裡漏掉。
+    const table = STRINGS[locale];
+    const fallback = STRINGS[FALLBACK];
+    const raw = Object.hasOwn(table, key) ? table[key]
+      : Object.hasOwn(fallback, key) ? fallback[key]
+        : key;
     return raw.replace(/\{(\d+)\}/g, (placeholder, i) => args[i] ?? placeholder);
   }
 

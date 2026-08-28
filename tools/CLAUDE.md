@@ -24,12 +24,25 @@ node tools/verify.js        # exit 0 = 全部通過
      `urlFilter` 被放寬到整個 openstreetmap.org、或 UA 的版本號跟 manifest 脫鉤。
      **版本號那項是刻意的同步閘門**：`rules.json` 的 UA 是手抄的版本號
      （靜態規則讀不到 manifest），只改 manifest 升版這裡就會紅
-   - **語系字串表**：`i18n.js` 兩份表的 key 必須一一對應（漏譯會 fallback 成英文，
-     畫面上看不出是漏了還是刻意不譯）。比對用 `Object.hasOwn` 而不是 `in` ——
-     後者會從原型鏈上「找到」叫 `toString`、`constructor` 這類的 key，漏譯照樣過關；`default_locale` 指到的 `_locales/` 目錄要存在；
-     **`manifest.name` 不可以是 `__MSG_...__`** —— `makeNoBridgeVariant()` 會抄走
-     `name`，而變體目錄沒有 `_locales`，Chrome 會拒絕載入它，最後一項就會用
-     「變體沒載入」這個跟真正問題無關的理由失敗
+   - **語系**（`checkLocales()`，拆成四支小函式）。這一組的共同點是壞了
+     **畫面上完全看不出來**：
+     · 兩份表的 key 一一對應（漏譯會 fallback 成英文）。比對用 `Object.hasOwn`
+       而不是 `in` —— 後者會從原型鏈上「找到」叫 `toString`、`constructor`
+       這類的 key，漏譯照樣過關
+     · 同一個 key 的**佔位符數量**也要一致 —— 一邊少一個 `{0}`，那個語言會靜靜
+       吞掉參數（英文的 `radiusRange` 少了它，上限值就不見了，句子仍讀得通）
+     · HTML 裡 `data-i18n` / `data-i18n-attr` 引用的 key 必須存在、格式要切得出
+       `attr:key`。`data-i18n` 打錯至少會把 key 印在畫面上，但 `data-i18n-attr`
+       裡的 `aria-label` 打錯只有讀螢幕的人受害；少一個冒號更是被 `apply()`
+       刻意靜默跳過
+     · 語言選單的 `<option>` 要與 `LOCALES` 對得上 —— `LOCALES` 是從 `STRINGS`
+       派生的，但選項是手寫的，加了語言忘了補選項就是「字串表有了但選不到」
+     · `default_locale` 指到的 `_locales/` 目錄與 `messages.json` 要在，manifest
+       用到的每個 `__MSG_xxx__` 在每一份 `messages.json` 裡都要找得到，且各份
+       的 key 一致
+     · **`manifest.name` 不可以是 `__MSG_...__`** —— `makeNoBridgeVariant()` 會抄
+       走 `name`，而變體目錄沒有 `_locales`，Chrome 會拒絕載入它，最後一項就會用
+       「變體沒載入」這個跟真正問題無關的理由失敗
    - **查詢跑在 service worker**：manifest 有沒有註冊 `background.service_worker`、
      `popup.html` 有沒有又直接載入 `geocode.js`。查詢搬回 popup 的話，
      「中途關掉 popup → 結果沒進快取 → 下次重送同一個 query」那個洞就回來了
