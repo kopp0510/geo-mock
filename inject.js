@@ -31,7 +31,8 @@
   // 我們發出去的 watch id 從一個大數起跳。頁面若用 Geolocation.prototype 繞過覆寫
   // 拿到原生 watch（那條路走得通，見 CLAUDE.md「已知限制」），再把原生 id 丟進
   // 我們的 clearWatch，小數字很容易撞上；從 1e6 開始基本上撞不到。
-  let nextWatchId = 1000000;
+  const FIRST_WATCH_ID = 1000000;
+  let nextWatchId = FIRST_WATCH_ID;
   const watches = new Map();
 
   let settings = null;   // null 代表設定還沒送到，不是「沒有設定」
@@ -71,6 +72,9 @@
       if (settings === null) {
         settings = DISABLED;
         flush();
+        // 排隊中的 getCurrentPosition 救了，watch 也要救：少了這行，已經建立的
+        // watch 會白等滿一個 SETTINGS_WAIT_MS 才被 fallbackTimer 交回原生。
+        for (const watch of watches.values()) applyWatch(watch);
       }
       return;
     }
@@ -86,10 +90,7 @@
     // 座標換了就等於位置變了，那正是 watchPosition 該回報的事。
     // 順帶處理三種切換：等設定的 watch 現在可以開工、模式改了要換送法、
     // 開關關掉要把 watch 交回原生。
-    for (const w of watches.values()) {
-      w.armed = true;
-      applyWatch(w);
-    }
+    for (const watch of watches.values()) applyWatch(watch);
   });
 
   // 握手：bridge.js 可能比本檔晚註冊 listener，也可能早一步就送出設定。
@@ -143,14 +144,20 @@
     };
   }
 
+  // 預設開啟且套用到所有網站，不留痕跡的話「為什麼我在台北 101」無從查起。
+  // CLAUDE.md「已知限制」把這行講成忘了關時的**唯一線索**，所以 getCurrentPosition
+  // 與 watchPosition 兩條路徑都必須經過這裡 —— 只有前者會印的話，那句話對
+  // 「導航、外送追蹤」這類只用 watch 的頁面就不成立，而那正是最該有線索的族群。
+  function announce() {
+    if (announced) return;
+    announced = true;
+    console.info('[geo-mock] 定位已覆寫為', settings.lat, settings.lng,
+      settings.mode === 'jitter' ? `（抖動半徑 ${settings.jitterRadius} m）` : '');
+  }
+
   function serve(success, error, options) {
     if (settings && settings.enabled) {
-      if (!announced) {
-        announced = true;
-        // 預設開啟且套用到所有網站，不留痕跡的話「為什麼我在台北 101」無從查起。
-        console.info('[geo-mock] 定位已覆寫為', settings.lat, settings.lng,
-          settings.mode === 'jitter' ? `（抖動半徑 ${settings.jitterRadius} m）` : '');
-      }
+      announce();
       // 非同步回呼，跟原生 API 的行為一致（同步呼叫 success 會讓某些網站的流程錯亂）
       setTimeout(() => success(makePosition(settings)), 0);
       return;
@@ -201,78 +208,114 @@
   // 之後可能立刻 clearWatch，所以不能像 getCurrentPosition 那樣把整個呼叫排隊等
   // 設定 —— 只能先發 id，位置晚點再送。
 
-  function stopDelivery(w) {
-    if (w.timer !== null) { clearInterval(w.timer); w.timer = null; }
-    if (w.nativeId !== null && nativeClearWatch) {
-      nativeClearWatch(w.nativeId);
-      w.nativeId = null;
+  // 把這個 watch 目前的送法整個停掉：自己的計時器，以及交回原生時拿到的那個 watch。
+  function stopDelivery(watch) {
+    clearInterval(watch.timer);
+    watch.timer = null;
+    // 第一筆是 setTimeout 排的，handle 一定要留著才攔得下來。不留的話：設定在那
+    // 0ms 之間改成「不覆寫」，這筆仍會送出，而 emit 當下讀到的 settings 已經是
+    // DISABLED（沒有 lat/lng）—— 頁面收到的是 coords.latitude === undefined。
+    clearTimeout(watch.firstTimer);
+    watch.firstTimer = null;
+    if (watch.nativeId !== null && nativeClearWatch) {
+      nativeClearWatch(watch.nativeId);
+      watch.nativeId = null;
     }
+  }
+
+  // 送一筆位置。守衛與 serve() 對齊（一樣經過 announce 與 enabled 檢查）——
+  // 兩條送位置的路徑各走各的，正是上面那個 undefined 座標的來源。
+  function emit(watch) {
+    if (watch.stopped || !settings || !settings.enabled) return;
+    announce();
+    watch.success(makePosition(settings));
   }
 
   // 依「目前的設定」決定這個 watch 怎麼送位置。設定每次變更都會再跑一次，
   // 所以它必須能從任何狀態切到任何狀態，先把舊的送法整個停掉再重新開始。
-  function applyWatch(w) {
-    if (w.stopped || !w.armed) return;
-    clearTimeout(w.fallbackTimer);
-    stopDelivery(w);
+  function applyWatch(watch) {
+    // 設定還沒到就什麼都還不能決定 —— 這個狀態唯一的出口是 fallbackTimer，
+    // 所以這裡要在清掉它之前先返回。
+    if (watch.stopped || settings === null) return;
+    clearTimeout(watch.fallbackTimer);
 
-    if (!settings || !settings.enabled) {
+    if (!settings.enabled) {
+      // 已經在原生手上就別拆掉重註冊。每拆一次頁面就多收到一筆「初始定位」，
+      // 對拿回呼間隔算速度、或用第一筆當基準點的頁面（跑步紀錄、導航）
+      // 會量到假的跳變，GPS 也得重新暖機。watch.options 全程不變，不重註冊是安全的。
+      if (watch.nativeId !== null) return;
+      stopDelivery(watch);
       // 覆寫沒開：交回原生，並記下它的 id，好讓我們的 clearWatch 停得掉
-      if (nativeWatchPosition) w.nativeId = nativeWatchPosition(w.success, w.error, w.options);
+      if (nativeWatchPosition) {
+        watch.nativeId = nativeWatchPosition(watch.success, watch.error, watch.options);
+      }
       return;
     }
 
+    // 固定模式下，設定變更若沒動到「送出去的內容」就不必再送。bridge.js 是任何
+    // WATCHED 鍵變動就整份重推，所以改個 jitterRadius 也會走到這裡 —— 那在 fixed
+    // 模式對輸出毫無影響，重送一組一模一樣的座標正是下面要避免的洗版。
+    // mode 也放進指紋：jitter 切回 fixed 時內容會不同，才會補送一筆真正的固定座標，
+    // 不會停在最後一次抖動出來的值。
+    const fingerprint = `${settings.mode},${settings.lat},${settings.lng},${settings.accuracy}`;
+    if (settings.mode !== 'jitter' && watch.sent === fingerprint) {
+      stopDelivery(watch);   // 從 jitter 切回來的話，interval 還是要停掉
+      return;
+    }
+    watch.sent = fingerprint;
+
+    stopDelivery(watch);
+
     // 非同步送第一筆，跟原生 API 的行為一致（同步呼叫 success 會讓某些網站的流程錯亂）
-    setTimeout(() => { if (!w.stopped) w.success(makePosition(settings)); }, 0);
+    watch.firstTimer = setTimeout(() => emit(watch), 0);
 
     // 固定模式送這一次就安靜：座標不會變，而真正的 watchPosition 只在位置**變化**
     // 時才回呼，每秒重送一組一模一樣的座標是在洗版。
     // jitter 每次都是新座標，持續送才有意義 —— 那正是這個模式存在的理由。
     if (settings.mode === 'jitter') {
-      w.timer = setInterval(() => {
-        if (!w.stopped) w.success(makePosition(settings));
-      }, JITTER_INTERVAL_MS);
+      watch.timer = setInterval(() => emit(watch), JITTER_INTERVAL_MS);
     }
   }
 
   geo.watchPosition = function (success, error, options) {
     const id = nextWatchId++;
-    const w = {
+    const watch = {
       success, error, options,
-      timer: null, nativeId: null, fallbackTimer: null,
-      armed: false,     // 設定到了沒
+      timer: null, firstTimer: null, nativeId: null, fallbackTimer: null,
+      sent: null,       // 上次送出的內容指紋，fixed 模式靠它避免重送一樣的東西
       stopped: false,   // clearWatch 過了沒
     };
-    watches.set(id, w);
+    watches.set(id, watch);
 
     if (settings === null) {
       // 設定還沒到。跟 getCurrentPosition 的排隊同一個道理，但這裡不能等 ——
       // id 現在就得回傳。設定永遠不來的話，這道逾時會把 watch 交回原生，
       // 不讓呼叫端無聲無息地等一輩子。
-      w.fallbackTimer = setTimeout(() => {
+      watch.fallbackTimer = setTimeout(() => {
+        // 這行不能省：applyWatch 看到 settings 還是 null 會直接返回，
+        // 逾時就變成另一種無聲的永遠等待。
         if (settings === null) settings = DISABLED;
-        w.armed = true;
-        applyWatch(w);
+        applyWatch(watch);
       }, SETTINGS_WAIT_MS);
     } else {
-      w.armed = true;
-      applyWatch(w);
+      applyWatch(watch);
     }
 
     return id;   // 同步回傳，這是這個 API 的硬要求
   };
 
   geo.clearWatch = function (id) {
-    const w = watches.get(id);
-    if (!w) {
-      // 不是我們發的 id —— 頁面可能用 prototype 繞過覆寫建了原生 watch。
-      // 轉給原生，不要默默吃掉。
-      if (nativeClearWatch) nativeClearWatch(id);
+    const watch = watches.get(id);
+    if (!watch) {
+      // 不是我們發的 id —— 頁面可能用 prototype 繞過覆寫建了原生 watch，轉給原生。
+      // 但只轉「小於我們起始號」的：≥ FIRST_WATCH_ID 的要嘛是已經 clear 過的
+      // （同一個 id 清兩次），要嘛根本沒發過，兩者都不該送進原生。
+      if (id < FIRST_WATCH_ID && nativeClearWatch) nativeClearWatch(id);
       return;
     }
-    w.stopped = true;
-    clearTimeout(w.fallbackTimer);
-    stopDelivery(w);
+    watch.stopped = true;
+    clearTimeout(watch.fallbackTimer);
+    stopDelivery(watch);
     watches.delete(id);
   };
 })();

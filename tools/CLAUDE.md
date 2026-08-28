@@ -18,12 +18,17 @@ node tools/verify.js        # exit 0 = 全部通過
 
 十一項斷言（第 1 項純靜態，其餘要開瀏覽器）：
 
-1. **兩條政策設定沒有壞掉**（`checkPolicySetup()`，只讀檔不送請求）。
+1. **三組會靜默回退的設定沒有壞掉**（`checkPolicySetup()`，只讀檔不送請求）。
    共同點是壞掉都**靜默** —— 搜尋照樣有結果，要到被 Nominatim 封鎖那天才發現：
    - **改寫 User-Agent 的 DNR 規則**：規則檔被刪、`enabled` 被改 false、權限被拿掉、
      `urlFilter` 被放寬到整個 openstreetmap.org、或 UA 的版本號跟 manifest 脫鉤。
      **版本號那項是刻意的同步閘門**：`rules.json` 的 UA 是手抄的版本號
      （靜態規則讀不到 manifest），只改 manifest 升版這裡就會紅
+   - **語系字串表**：`i18n.js` 兩份表的 key 必須一一對應（漏譯會 fallback 成英文，
+     畫面上看不出是漏了還是刻意不譯）；`default_locale` 指到的 `_locales/` 目錄要存在；
+     **`manifest.name` 不可以是 `__MSG_...__`** —— `makeNoBridgeVariant()` 會抄走
+     `name`，而變體目錄沒有 `_locales`，Chrome 會拒絕載入它，最後一項就會用
+     「變體沒載入」這個跟真正問題無關的理由失敗
    - **查詢跑在 service worker**：manifest 有沒有註冊 `background.service_worker`、
      `popup.html` 有沒有又直接載入 `geocode.js`。查詢搬回 popup 的話，
      「中途關掉 popup → 結果沒進快取 → 下次重送同一個 query」那個洞就回來了
@@ -56,7 +61,9 @@ node tools/verify.js        # exit 0 = 全部通過
 9. **`watchPosition` / `clearWatch`**：id 同步回傳（是 `number`，不是 undefined）、
    固定模式只送一次、切到 jitter 後持續送且座標互不相同、`clearWatch` 之後完全安靜。
    這一項約 7 秒，是全部斷言裡最慢的，因為要真的等計時器跑
-10. 關掉開關後不再覆寫（經 popup 取消勾選 → 重新載入測試頁）。第 2～9 項全在測
+10. 關掉開關後不再覆寫（經 popup 取消勾選 → 重新載入測試頁）。**等的是
+    `#state` 的 `data-state` 屬性，不是顯示文字** —— 介面有中英兩種語系，
+    比對文字換個語言就斷；只看 class 也不行，`fail()` 同樣會設成 `state off`。第 2～9 項全在測
    「開啟」狀態，`enabled: false` 這條路徑只有這一項驗得到。斷言看的是
    `inject.js` 有沒有印出覆寫痕跡，不是比對座標數值 —— 只比座標的話，
    「停用分支誤送預設值」這種迴歸會綠燈放行

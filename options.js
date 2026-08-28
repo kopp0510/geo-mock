@@ -3,6 +3,13 @@
 (() => {
   'use strict';
 
+  const { t } = GEO_MOCK_I18N;
+
+  // 先用「跟隨瀏覽器」套一次，讀到設定再套第二次，免得選了 English 的人
+  // 每次開這頁都先閃一下中文。
+  GEO_MOCK_I18N.setLocale('auto');
+  GEO_MOCK_I18N.apply();
+
   const FIELDS = ['lat', 'lng', 'accuracy', 'jitterRadius'];
   // 半徑沒有上限的話，多按幾個零就會讓抖動算出跨半個地球的座標。
   // inject.js 那邊會夾回合法範圍，但使用者看到的行為會很莫名。
@@ -20,9 +27,15 @@
   // 那幾個歸 popup 管，這裡不能順手把一份陳舊的值寫回去。
   chrome.storage.local.get(GEO_MOCK_DEFAULTS, (saved) => {
     if (chrome.runtime.lastError) {
-      say('讀取設定失敗:' + chrome.runtime.lastError.message, 'err');
+      say(t('loadFailed', chrome.runtime.lastError.message), 'err');
       return;
     }
+    // 語言在 popup 選，這裡只跟著跑
+    GEO_MOCK_I18N.setLocale(saved.locale);
+    GEO_MOCK_I18N.apply();
+    // 這一句帶參數（上限值），apply() 填不了
+    document.getElementById('radiusHint').textContent = t('radiusHint', JITTER_MAX);
+
     for (const k of FIELDS) el[k].value = saved[k];
   });
 
@@ -34,10 +47,10 @@
     if (!raw) { say('', ''); return; }
     // 逗號或空白分隔都收；科學記號不收，貼上來的座標不會長那樣
     const m = raw.match(/^(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)$/);
-    if (!m) { say('認不得這個格式，預期「緯度, 經度」', 'err'); return; }
+    if (!m) { say(t('pasteBadFormat'), 'err'); return; }
     el.lat.value = m[1];
     el.lng.value = m[2];
-    say('已拆進下面兩欄，記得按儲存', 'ok');
+    say(t('pasteSplit'), 'ok');
   });
 
   form.addEventListener('submit', (e) => {
@@ -47,22 +60,22 @@
     const values = {};
     for (const k of FIELDS) {
       const n = el[k].valueAsNumber;
-      if (!Number.isFinite(n)) { say(`${k} 不是有效的數字`, 'err'); el[k].focus(); return; }
+      if (!Number.isFinite(n)) { say(t('notANumber', k), 'err'); el[k].focus(); return; }
       values[k] = n;
     }
-    if (Math.abs(values.lat) > 90)  { say('緯度必須在 -90 ～ 90 之間', 'err'); el.lat.focus(); return; }
-    if (Math.abs(values.lng) > 180) { say('經度必須在 -180 ～ 180 之間', 'err'); el.lng.focus(); return; }
-    if (values.accuracy < 0)        { say('accuracy 不能是負數', 'err'); el.accuracy.focus(); return; }
+    if (Math.abs(values.lat) > 90)  { say(t('latRange'), 'err'); el.lat.focus(); return; }
+    if (Math.abs(values.lng) > 180) { say(t('lngRange'), 'err'); el.lng.focus(); return; }
+    if (values.accuracy < 0)        { say(t('accuracyNegative'), 'err'); el.accuracy.focus(); return; }
     if (values.jitterRadius < 0 || values.jitterRadius > JITTER_MAX) {
-      say(`抖動半徑要在 0 ～ ${JITTER_MAX} 之間`, 'err'); el.jitterRadius.focus(); return;
+      say(t('radiusRange', JITTER_MAX), 'err'); el.jitterRadius.focus(); return;
     }
 
     chrome.storage.local.set(values, () => {
       if (chrome.runtime.lastError) {
-        say('儲存失敗:' + chrome.runtime.lastError.message, 'err');
+        say(t('saveFailed', chrome.runtime.lastError.message), 'err');
         return;
       }
-      say('已儲存，即時生效', 'ok');
+      say(t('saved'), 'ok');
     });
   });
 })();

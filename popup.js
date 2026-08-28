@@ -4,12 +4,19 @@
 (() => {
   'use strict';
 
+  const { t } = GEO_MOCK_I18N;
+
   const el = Object.fromEntries(
     ['enabled', 'state', 'lat', 'lng', 'accuracy', 'options', 'q', 'go', 'results', 'msg',
       'places', 'addPlace', 'placeForm', 'placeName', 'cancelPlace',
-      'modeFixed', 'modeJitter', 'radiusLabel', 'radius']
+      'modeFixed', 'modeJitter', 'radiusLabel', 'radius', 'locale']
       .map(k => [k, document.getElementById(k)])
   );
+
+  // 先用「跟隨瀏覽器」套一次，讀到設定再套第二次。少了這一步，選了 English 的人
+  // 每次開 popup 都會先閃一下中文。
+  GEO_MOCK_I18N.setLocale('auto');
+  GEO_MOCK_I18N.apply();
 
   const PLACE_MAX = 12;   // 存到滿就停，chips 再多下去 popup 會被推得很長
   let places = [];
@@ -38,13 +45,18 @@
   }
 
   function setState(on) {
-    el.state.textContent = on ? '覆寫中' : '未覆寫，走真實定位';
+    el.state.textContent = on ? t('stateOn') : t('stateOff');
     el.state.className = 'state ' + (on ? 'on' : 'off');
+    // 給 tools/verify.js 用的、不隨語系變的訊號。比對顯示文字的話 i18n 一上就斷；
+    // 只看 class 也不行 —— 下面的 fail() 同樣會設成 'state off'，
+    // 「存檔成功」與「存檔失敗」會分不出來。
+    el.state.dataset.state = on ? 'on' : 'off';
   }
 
   function fail(msg) {
     el.state.textContent = msg;
     el.state.className = 'state off';
+    el.state.dataset.state = 'error';
   }
 
   // 開關在 HTML 裡是 disabled 的，讀到設定才交出控制權。
@@ -54,9 +66,15 @@
   try {
     chrome.storage.local.get(GEO_MOCK_DEFAULTS, (s) => {
       if (chrome.runtime.lastError) {
-        fail('讀取設定失敗:' + chrome.runtime.lastError.message);
+        fail(t('loadFailed', chrome.runtime.lastError.message));
         return;
       }
+      // 語言先套，後面每一句訊息才會是對的語系
+      GEO_MOCK_I18N.setLocale(s.locale);
+      GEO_MOCK_I18N.apply();
+      el.locale.value = GEO_MOCK_I18N.LOCALES.includes(s.locale) ? s.locale : 'auto';
+      el.locale.disabled = false;
+
       el.enabled.checked = !!s.enabled;
       el.enabled.disabled = false;
       setState(s.enabled);
@@ -71,7 +89,7 @@
     // 同步例外（如 Extension context invalidated）。bridge.js 也是這樣處理的，
     // 不印出來的話非預期的程式錯誤會消失無蹤。
     console.error('[geo-mock] popup 讀取設定失敗:', err);
-    fail('讀取設定失敗:' + err.message);
+    fail(t('loadFailed', err.message));
   }
 
   el.enabled.addEventListener('change', () => {
@@ -81,7 +99,7 @@
         if (chrome.runtime.lastError) {
           // 沒存成就把開關扳回去，不要讓 UI 顯示一個沒生效的狀態
           el.enabled.checked = !on;
-          fail('儲存失敗:' + chrome.runtime.lastError.message);
+          fail(t('saveFailed', chrome.runtime.lastError.message));
           return;
         }
         setState(on);
@@ -89,7 +107,7 @@
     } catch (err) {
       el.enabled.checked = !on;
       console.error('[geo-mock] popup 儲存設定失敗:', err);
-      fail('儲存失敗:' + err.message);
+      fail(t('saveFailed', err.message));
     }
   });
 
@@ -128,24 +146,24 @@
     const lat = Number(place.lat);
     const lng = Number(place.lng);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      say('這個地點的座標壞掉了', true);
+      say(t('badPlaceCoords'), true);
       return;
     }
 
     try {
       chrome.storage.local.set({ lat, lng }, () => {
         if (chrome.runtime.lastError) {
-          say('儲存失敗:' + chrome.runtime.lastError.message, true);
+          say(t('saveFailed', chrome.runtime.lastError.message), true);
           return;
         }
         showCoords({ lat, lng });
         invalidate();
         el.q.value = '';           // 程式賦值不會觸發 input，訊息不會被洗掉
-        say('已套用');
+        say(t('applied'));
       });
     } catch (err) {
       console.error('[geo-mock] popup 套用座標失敗:', err);
-      say('儲存失敗:' + err.message, true);
+      say(t('saveFailed', err.message), true);
     }
   }
 
@@ -176,21 +194,21 @@
   // fetch 與快取寫入照樣完成，不會下次再送一遍同樣的查詢。
   async function run(query) {
     const mine = ++seq;
-    say('搜尋中…');
+    say(t('searching'));
     try {
       const res = await chrome.runtime.sendMessage({ type: 'geo-mock:search', query });
       if (mine !== seq) return;      // 已經有更新的查詢送出，這份結果作廢
       // 回覆沒送到時 res 是 undefined（不是 reject），
       // 不擋的話下一行會讀到 undefined.results
-      if (!res) throw new Error('service worker 沒有回應');
+      if (!res) throw new Error(t('noWorker'));
       if (res.error) throw new Error(res.error);
       render(res.results);
-      say(res.results.length ? '' : '找不到符合的地點');
+      say(res.results.length ? '' : t('noResults'));
     } catch (err) {
       if (mine !== seq) return;
       console.error('[geo-mock] 地址搜尋失敗:', err);
       invalidate();
-      say('搜尋失敗:' + err.message, true);
+      say(t('searchFailed', err.message), true);
     }
   }
 
@@ -222,14 +240,14 @@
     // 兩條失敗路徑做的事一樣：沒存成就把畫面扳回實際值，不要顯示一個沒生效的狀態
     const failed = (message) => {
       showMode();
-      say('模式儲存失敗:' + message, true);
+      say(t('modeSaveFailed', message), true);
     };
     try {
       chrome.storage.local.set({ mode }, () => {
         if (chrome.runtime.lastError) { failed(chrome.runtime.lastError.message); return; }
         current.mode = mode;
         showMode();
-        say(mode === 'jitter' ? `抖動模式，半徑 ${current.jitterRadius} m` : '固定模式');
+        say(mode === 'jitter' ? t('modeJitterSet', current.jitterRadius) : t('modeFixedSet'));
       });
     } catch (err) {
       // 同步例外是非預期的程式錯誤，多印一行；lastError 是預期內的失敗，不印
@@ -256,8 +274,8 @@
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'del';
-    del.title = '刪除';
-    del.setAttribute('aria-label', `刪除 ${place.label}`);
+    del.title = t('deletePlace');
+    del.setAttribute('aria-label', t('deletePlaceLabel', place.label));
     del.textContent = '×';
     // 比對物件參考而不是 index 或內容：index 在前一次刪除後就位移了，
     // 而同名同座標存兩次仍是兩個不同的物件，刪得掉正確的那個。
@@ -272,7 +290,7 @@
     el.places.replaceChildren(...places.map(placeChip));
     const full = places.length >= PLACE_MAX;
     el.addPlace.disabled = full;
-    el.addPlace.textContent = full ? `已存滿 ${PLACE_MAX} 個` : '＋ 存目前座標';
+    el.addPlace.textContent = full ? t('placesFull', PLACE_MAX) : t('addPlace');
   }
 
   // 收 updater 函式而不是現成的陣列，而且把寫入串成鏈：連續刪兩個 chip 時，
@@ -289,7 +307,7 @@
       try {
         chrome.storage.local.set({ places: next }, () => {
           if (chrome.runtime.lastError) {
-            say('地點儲存失敗:' + chrome.runtime.lastError.message, true);
+            say(t('placeSaveFailed', chrome.runtime.lastError.message), true);
           } else {
             places = next;
             renderPlaces();
@@ -298,7 +316,7 @@
         });
       } catch (err) {
         console.error('[geo-mock] popup 儲存地點失敗:', err);
-        say('地點儲存失敗:' + err.message, true);
+        say(t('placeSaveFailed', err.message), true);
         done();
       }
     }));
@@ -326,11 +344,38 @@
     const label = el.placeName.value.trim();
     if (!label) { el.placeName.focus(); return; }
     if (!Number.isFinite(current.lat) || !Number.isFinite(current.lng)) {
-      say('還沒讀到目前座標，等一下再試', true);
+      say(t('noCoordsYet'), true);
       return;
     }
     savePlaces((list) => [...list, { label, lat: current.lat, lng: current.lng }]);
     closePlaceForm();
+  });
+
+  // ── 語言 ────────────────────────────────────────────────────
+  // 選了就存進 storage 並就地重畫，不必重開 popup。apply() 只管靜態的
+  // data-i18n 文字，動態產生的那些（狀態列、模式、chips）要自己再跑一次。
+  function relabel() {
+    GEO_MOCK_I18N.apply();
+    setState(!!current.enabled);
+    showMode();
+    renderPlaces();
+  }
+
+  el.locale.addEventListener('change', () => {
+    const pref = el.locale.value;
+    try {
+      chrome.storage.local.set({ locale: pref }, () => {
+        if (chrome.runtime.lastError) {
+          say(t('saveFailed', chrome.runtime.lastError.message), true);
+          return;
+        }
+        GEO_MOCK_I18N.setLocale(pref);
+        relabel();
+      });
+    } catch (err) {
+      console.error('[geo-mock] popup 儲存語言失敗:', err);
+      say(t('saveFailed', err.message), true);
+    }
   });
 
   el.options.addEventListener('click', (e) => {

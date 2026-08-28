@@ -55,7 +55,22 @@ jitter 是為了測試座標微幅飄動時 UI 的反應（釘子跳動、重複
 5. 目前座標與 accuracy 顯示
 6. 已存地點 chips + 新增按鈕（點 chip 套用、按 × 刪除，上限 12 個；
    名稱用行內輸入框，不用 `prompt()` —— 那在 extension popup 裡會連 popup 一起關掉）
-7. 底部：進階設定連結
+7. 底部：進階設定連結、語言選單
+
+## 語言
+
+介面支援繁體中文與英文，**在擴充內就能切**（popup 底部的選單：繁體中文／English／
+跟隨瀏覽器），選擇存在 `storage.local` 的 `locale`。
+
+不用 Chrome 原生的 `_locales` + `chrome.i18n.getMessage`：那套跟隨瀏覽器的 UI 語言，
+擴充自己沒辦法在執行時切換。這是開發工具，想看英文介面時不該逼人去改整台瀏覽器的
+語言設定。`_locales/` 只留給 manifest 的擴充描述。
+
+- 兩份字串表在 `i18n.js`，key 必須一一對應（漏一個會 fallback 成英文，畫面上看不出
+  是漏譯還是刻意不譯）—— `tools/verify.js` 第 1 項靜態擋著
+- Nominatim 的 `accept-language` 跟著介面語系走，**快取鍵也要含語系**：
+  同一個查詢在中英文底下回的地名不同
+- `inject.js` 印在頁面 console 的訊息不翻譯（MAIN world 拿不到字串表）
 
 Options 頁放不常改的欄位：jitter 半徑（已做），以及 altitude、altitudeAccuracy、
 heading、speed（未做，第三版）。

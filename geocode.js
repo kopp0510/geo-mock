@@ -50,9 +50,12 @@ const GEO_MOCK_GEOCODE = (() => {
   let chain = Promise.resolve();
   const inflight = new Map();      // 正規化後的查詢字串 → 還在路上的那一發
 
-  // 快取鍵：去頭尾、壓縮空白、轉小寫。「 台北  車站 」與「台北 車站」算同一筆。
+  // 快取鍵：語系 + 去頭尾、壓縮空白、轉小寫的查詢字串。
+  // 「 台北  車站 」與「台北 車站」算同一筆；但**語系必須進 key** ——
+  // 同一個查詢在 zh-TW 與 en 底下 Nominatim 回的地名不同，共用一份快取的話
+  // 切了語言仍會看到上一個語系的候選清單。
   function normalize(query) {
-    return query.trim().replace(/\s+/g, ' ').toLowerCase();
+    return GEO_MOCK_I18N.current() + '|' + query.trim().replace(/\s+/g, ' ').toLowerCase();
   }
 
   // chrome.storage.local.get 回的是整包物件，取單一鍵要寫 computed-key 解構、
@@ -97,8 +100,10 @@ const GEO_MOCK_GEOCODE = (() => {
 
   async function fetchRemote(query) {
     await gate();
+    // query 進來時已經帶著「語系|」前綴（見 normalize），送出前要拆掉
+    const [lang, ...rest] = query.split('|');
     const url = `${ENDPOINT}?format=jsonv2&limit=${LIMIT}`
-      + `&accept-language=zh-TW&q=${encodeURIComponent(query)}`;
+      + `&accept-language=${lang}&q=${encodeURIComponent(rest.join('|'))}`;
 
     // 讀 body 也要包在 try 裡：captive portal／公司 proxy 會回一頁 HTML，
     // 那時炸的是 res.json() 而不是 fetch，漏在外面的話使用者會看到
@@ -108,21 +113,23 @@ const GEO_MOCK_GEOCODE = (() => {
       const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
       // 帶 cause 標記，好讓下面的 catch 認出「連得上、但對方回了錯誤碼」，
       // 不要把它一併翻譯成「連不上」。
-      if (!res.ok) throw new Error(`Nominatim 回應 ${res.status}`, { cause: 'http' });
+      if (!res.ok) throw new Error(GEO_MOCK_I18N.t('httpError', res.status), { cause: 'http' });
       raw = await res.json();
     } catch (err) {
       // 原始錯誤是英文的 TimeoutError／SyntaxError／TypeError，直接丟給使用者
       // 看沒有意義；但也不能整個吞掉，留一份原文在 console。
       console.error('[geo-mock] Nominatim 請求失敗:', err);
       if (err.cause === 'http') throw err;
-      if (err.name === 'TimeoutError' || err.name === 'AbortError') throw new Error('連線逾時');
-      if (err.name === 'SyntaxError') throw new Error('Nominatim 回應不是有效的 JSON');
-      throw new Error('連不上 Nominatim');
+      if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+        throw new Error(GEO_MOCK_I18N.t('timeout'));
+      }
+      if (err.name === 'SyntaxError') throw new Error(GEO_MOCK_I18N.t('badJson'));
+      throw new Error(GEO_MOCK_I18N.t('offline'));
     }
 
     // 正常是一個陣列。擋掉錯誤物件之類的回應，否則錯誤訊息會變成
     // 「raw.map is not a function」，對使用者毫無意義。
-    if (!Array.isArray(raw)) throw new Error('Nominatim 回應格式不符預期');
+    if (!Array.isArray(raw)) throw new Error(GEO_MOCK_I18N.t('badFormat'));
 
     // lat/lon 回來是字串，不轉的話存進 storage 的是字串，
     // 畫面上看起來一模一樣，但 inject.js 拿到的座標型別就錯了。

@@ -1,0 +1,6 @@
+{
+  "appDesc": {
+    "message": "Development tool for overriding geolocation: make the browser report the GPS coordinates you choose, to any site.",
+    "description": "Extension description shown in chrome://extensions and the Web Store."
+  }
+}

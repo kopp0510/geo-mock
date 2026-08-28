@@ -53,9 +53,11 @@
   //
   // 例外用扣的，扣掉的每一個都要有理由：
   //   places —— 只有 popup 讀寫，存個地點不該驚動每個分頁
+  //   locale —— 介面語言，只有擴充自己的頁面用得到；inject.js 的 console 訊息
+  //             不做 i18n（它在 MAIN world，拿不到字串表）
   // 同一個 storage 區裡的 geocodeCache / geocodeLastAt 不在 defaults 裡，
   // 本來就不會被派生進來。
-  const NOT_WATCHED = ['places'];
+  const NOT_WATCHED = ['places', 'locale'];
   const WATCHED = Object.keys(GEO_MOCK_DEFAULTS).filter((k) => !NOT_WATCHED.includes(k));
 
   // 送出去的內容也只留 WATCHED，不是整份設定。這個事件頁面自己的 JS 監聽得到

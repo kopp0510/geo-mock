@@ -125,7 +125,39 @@ function startServer() {
 // 這三支一律回傳 null 表示通過、回傳字串表示哪裡不對，所以能用 || 串起來。
 function checkPolicySetup() {
   const mf = JSON.parse(fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf8'));
-  return checkServiceWorker(mf) || checkUaRule(mf);
+  return checkServiceWorker(mf) || checkUaRule(mf) || checkLocales(mf);
+}
+
+// 語系相關的靜態檢查。同樣是壞掉不會有症狀那一類：漏譯的 key 會 fallback 成
+// 英文，畫面上看不出是漏了還是刻意不譯。
+function checkLocales(mf) {
+  const tables = require(path.join(EXT_DIR, 'i18n.js')).STRINGS;
+  const langs = Object.keys(tables);
+  if (langs.length < 2) return 'i18n.js 的字串表少於兩種語言';
+
+  const [base, ...rest] = langs;
+  for (const lang of rest) {
+    const missing = Object.keys(tables[base]).filter(k => !(k in tables[lang]));
+    const extra = Object.keys(tables[lang]).filter(k => !(k in tables[base]));
+    if (missing.length || extra.length) {
+      return `字串表 ${lang} 與 ${base} 的 key 對不上 —— `
+        + `${lang} 缺: ${missing.join(', ') || '無'}；多: ${extra.join(', ') || '無'}`;
+    }
+  }
+
+  // manifest 的 name 不能用 __MSG_...__：makeNoBridgeVariant 會把 name 抄進變體的
+  // manifest，而變體目錄沒有 _locales，Chrome 會整個拒絕載入 —— 最後一項會用
+  // 「變體沒載入」的理由失敗，跟真正的問題差了十萬八千里。
+  if (String(mf.name).startsWith('__MSG_')) {
+    return 'manifest 的 name 不能用 __MSG_ 佔位（no-bridge 變體會抄走它，見 tools/CLAUDE.md）';
+  }
+  if (mf.default_locale) {
+    const dir = path.join(EXT_DIR, '_locales', mf.default_locale, 'messages.json');
+    if (!fs.existsSync(dir)) {
+      return `default_locale 是 ${mf.default_locale}，但 ${dir} 不存在 —— Chrome 會拒絕載入整個擴充`;
+    }
+  }
+  return null;
 }
 
 // 查詢一旦搬回 popup，「中途關掉 popup → 結果沒進快取 → 下次重送同一個 query」
@@ -263,8 +295,8 @@ async function cleanup({ ctx, profile }) {
   try {
     // 1) 靜態檢查：不開瀏覽器、不送請求
     const setupProblem = checkPolicySetup();
-    console.log('政策相關設定        : ' + (setupProblem || '完整'));
-    results.push(['Nominatim 政策相關設定沒有壞掉（靜態）', setupProblem === null]);
+    console.log('靜態設定檢查        : ' + (setupProblem || '完整'));
+    results.push(['政策設定與語系字串表都沒壞掉（靜態）', setupProblem === null]);
 
     // ── 正常情境：擴充完整載入 ──────────────────────────────
     const a = await launch(chromium, executablePath, EXT_DIR);
@@ -491,6 +523,8 @@ async function cleanup({ ctx, profile }) {
       // 這裡驗的是三件在 getCurrentPosition 上不會出現的事：id 必須**同步**回傳
       // （陷阱 2）、固定模式送一次就安靜（座標不變，真正的 watchPosition 只在
       // 位置變化時回呼）、jitter 模式持續送。
+      const countTicks = () => page.evaluate(() => window.__watch.length);
+
       const watchIdType = await page.evaluate(() => {
         window.__watch = [];
         window.__watchId = navigator.geolocation.watchPosition((p) => {
@@ -498,21 +532,23 @@ async function cleanup({ ctx, profile }) {
         });
         return typeof window.__watchId;   // 回傳的當下就得是數字，不能是 undefined
       });
+      // 等超過兩個 jitter 間隔（inject.js 的 JITTER_INTERVAL_MS 是 1 秒）：
+      // 固定模式若誤留了計時器，fixedTicks 就會大於 1
       await page.waitForTimeout(2500);
-      const fixedTicks = await page.evaluate(() => window.__watch.length);
+      const fixedTicks = await countTicks();
 
       // 切到 jitter：座標開始變動，watch 就該持續回報
       await ext.goto(`chrome-extension://${extId}/popup.html`);
       await ext.waitForFunction(() => !document.getElementById('modeJitter').disabled);
       await ext.check('#modeJitter');
-      await page.waitForTimeout(3300);
+      await page.waitForTimeout(3300);   // 約三個間隔，夠下面要求的 >= 3 筆
       const jitterTicks = await page.evaluate(() => window.__watch.slice(1));
 
-      // 停掉之後就該完全安靜
+      // 停掉之後就該完全安靜：再等超過一個間隔，數字不該再動
       await page.evaluate(() => navigator.geolocation.clearWatch(window.__watchId));
-      const atClear = await page.evaluate(() => window.__watch.length);
+      const atClear = await countTicks();
       await page.waitForTimeout(1500);
-      const afterClear = await page.evaluate(() => window.__watch.length);
+      const afterClear = await countTicks();
 
       const jitterDistinct = new Set(jitterTicks.map(p => `${p.lat},${p.lng}`)).size;
       console.log('watchPosition       : '
@@ -537,10 +573,13 @@ async function cleanup({ ctx, profile }) {
       await ext.screenshot({ path: path.join(SHOTS, 'popup-on.png') });
 
       await ext.uncheck('#enabled');
-      // 比對文字而非 class：popup.js 的 fail() 也會把 class 設成 'state off'，
-      // 只看 class 的話「存檔成功」與「存檔失敗」都會讓這個等待通過。
+      // 比對 data-state 而不是顯示文字，也不是 class：
+      //   文字 —— 介面有中英兩種語系，比對文字的話換個語言這裡就斷了
+      //   class —— popup.js 的 fail() 也會設成 'state off'，
+      //            「存檔成功」與「存檔失敗」會分不出來
+      // data-state 是 popup.js 專門為這件事寫的訊號，成功是 on/off、失敗是 error。
       await ext.waitForFunction(
-        () => document.getElementById('state').textContent === '未覆寫，走真實定位');
+        () => document.getElementById('state').dataset.state === 'off');
       await ext.waitForTimeout(SETTLE);
       await ext.screenshot({ path: path.join(SHOTS, 'popup-off.png') });
 

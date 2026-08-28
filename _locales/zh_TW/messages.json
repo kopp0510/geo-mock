@@ -1,0 +1,6 @@
+{
+  "appDesc": {
+    "message": "開發用的定位覆寫工具：讓瀏覽器對任何網站回報指定的 GPS 座標。",
+    "description": "顯示在 chrome://extensions 與商店頁的擴充描述。"
+  }
+}

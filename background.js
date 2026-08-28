@@ -9,7 +9,10 @@
 // 附帶的好處是速率閘門的狀態集中在單一實例上，不再是「每個 popup 各有一份記憶體
 // 狀態，靠 storage 的時間戳兜起來」。storage 那份仍留著，service worker 被
 // Chrome 回收後重啟時要靠它。
-importScripts('geocode.js');
+// defaults.js 要排在前面（geocode.js 與下面讀 locale 都靠它），
+// i18n.js 要排在 geocode.js 前面（那支檔案的錯誤訊息走 t()）。
+// 順序反了就是 ReferenceError，跟 content script 那邊同一種依賴。
+importScripts('defaults.js', 'i18n.js', 'geocode.js');
 
 // popup.js 送的訊息型別。兩邊各寫一次字面值：popup 不載入 geocode.js
 // （查詢改走這裡了），沒有現成的共用檔可放，為一個字串新增一支檔案不划算。
@@ -18,10 +21,16 @@ const SEARCH = 'geo-mock:search';
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type !== SEARCH) return undefined;   // 不是給我們的，讓別的 listener 處理
 
+  // 錯誤訊息會原樣顯示在 popup 上，所以要用使用者選的語言。service worker 隨時
+  // 會被回收重啟，記憶體裡的語系留不住，每次都從 storage 讀一次最省事。
+  chrome.storage.local.get({ locale: GEO_MOCK_DEFAULTS.locale }, ({ locale }) => {
+    GEO_MOCK_I18N.setLocale(locale);
+  });
+
   if (typeof msg.query !== 'string') {
     // 少了這道，normalize() 的 query.trim() 會拋，使用者看到的是
     // 「Cannot read properties of undefined」這種對他毫無意義的訊息。
-    sendResponse({ error: '查詢字串不見了' });
+    sendResponse({ error: GEO_MOCK_I18N.t('noQuery') });
     return true;
   }
 

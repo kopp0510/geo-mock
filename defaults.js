@@ -16,6 +16,9 @@ var GEO_MOCK_DEFAULTS = {
   // **預設必須是 fixed** —— 好幾項驗證斷言比對的是精確座標，預設抖動會全紅。
   mode: 'fixed',
   jitterRadius: 50,   // 公尺。jitter 模式的最大偏移半徑
+  // 介面語言：'auto'（跟隨瀏覽器）、'zh-TW'、'en'。
+  // 跟 places 一樣只有擴充自己的頁面用得到，不進 bridge 的推送範圍。
+  locale: 'auto',
   // 已存地點。只有 popup 讀寫，bridge.js 的 WATCHED 刻意不含它 ——
   // 存一個地點不該對每個開著的分頁推一次設定。
   places: [],         // [{ label, lat, lng }]，上限見 popup.js 的 PLACE_MAX

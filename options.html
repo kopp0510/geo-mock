@@ -12,8 +12,8 @@
   h1 { font-size: 1.25rem; margin: 0 0 .25rem; }
   .sub { color: #666; margin: 0 0 1.75rem; }
   label { display: block; margin-bottom: 1rem; }
-  .name { display: block; margin-bottom: .25rem; font-weight: 600; }
-  .hint { display: block; color: #666; font-weight: 400; font-size: .85em; }
+  .name { display: block; font-weight: 600; }
+  .hint { display: block; margin-bottom: .25rem; color: #666; font-weight: 400; font-size: .85em; }
   input {
     width: 100%; padding: .5rem; font: inherit; box-sizing: border-box;
     border: 1px solid #bbb; border-radius: 4px; background: Field; color: FieldText;
@@ -35,42 +35,44 @@
 </style>
 </head>
 <body>
-  <h1>geo-mock 設定</h1>
-  <p class="sub">這裡設定回報給網站的座標。存檔即時生效，不必重新整理分頁 ——
-    但頁面要再呼叫一次定位才看得到，已經抓過位置的頁面不會自己更新。</p>
+  <h1 data-i18n="optionsTitle">geo-mock 設定</h1>
+  <p class="sub" data-i18n="optionsSub">這裡設定回報給網站的座標。</p>
 
   <form id="form">
     <label>
-      <span class="name">貼上座標<span class="hint">從 Google Maps 右鍵複製的那一串，例如
-        24.262246621321527, 120.62450392661896 —— 會自動拆進下面兩欄</span></span>
-      <input id="paste" type="text" placeholder="緯度, 經度" autocomplete="off" spellcheck="false">
+      <span class="name" data-i18n="pasteName">貼上座標</span>
+      <span class="hint" data-i18n="pasteHint">從 Google Maps 右鍵複製的那一串</span>
+      <input id="paste" type="text" autocomplete="off" spellcheck="false"
+             data-i18n-attr="placeholder:pastePlaceholder">
     </label>
     <label>
-      <span class="name">緯度 latitude<span class="hint">-90 ～ 90</span></span>
+      <span class="name" data-i18n="latName">緯度 latitude</span>
+      <span class="hint" data-i18n="latHint">-90 ～ 90</span>
       <input id="lat" type="number" step="any" min="-90" max="90" required>
     </label>
     <label>
-      <span class="name">經度 longitude<span class="hint">-180 ～ 180</span></span>
+      <span class="name" data-i18n="lngName">經度 longitude</span>
+      <span class="hint" data-i18n="lngHint">-180 ～ 180</span>
       <input id="lng" type="number" step="any" min="-180" max="180" required>
     </label>
     <label>
-      <span class="name">accuracy<span class="hint">公尺，回報給網站的定位誤差半徑</span></span>
+      <span class="name" data-i18n="accuracyName">accuracy</span>
+      <span class="hint" data-i18n="accuracyHint">公尺，回報給網站的定位誤差半徑</span>
       <input id="accuracy" type="number" step="any" min="0" required>
     </label>
     <label>
-      <span class="name">抖動半徑<span class="hint">公尺，上限 100000（100 公里）。
-        抖動模式下以上面的座標為中心，每次定位在這個半徑內隨機取一點</span></span>
+      <span class="name" data-i18n="radiusName">抖動半徑</span>
+      <!-- 這一行帶參數（上限值），apply() 填不了，由 options.js 補 -->
+      <span class="hint" id="radiusHint">公尺</span>
       <input id="jitterRadius" type="number" step="any" min="0" max="100000" required>
     </label>
-    <button type="submit">儲存</button><span id="status" role="status"></span>
+    <button type="submit" data-i18n="saveButton">儲存</button><span id="status" role="status"></span>
   </form>
 
-  <footer>
-    altitude、heading、speed 等欄位尚未實作（見 SPEC.md 第三版）。
-    模式切換（固定／抖動）在 popup。
-  </footer>
+  <footer data-i18n="optionsFooter">altitude、heading、speed 等欄位尚未實作。</footer>
 
   <script src="defaults.js"></script>
+  <script src="i18n.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

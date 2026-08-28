@@ -108,12 +108,17 @@
   #cancelPlace { background: #0002; color: inherit; }
 
   .note { margin: .8rem 0 0; padding-top: .8rem; border-top: 1px solid #0002; color: #666; }
-  footer { margin-top: .7rem; }
+  footer {
+    margin-top: .7rem; display: flex; align-items: center;
+    justify-content: space-between; gap: .5rem;
+  }
+  .lang { display: flex; align-items: center; gap: .3rem; color: #666; }
+  .lang select { font: inherit; padding: .1rem .2rem; }
   a { color: #2563eb; }
 
   /* #666 在深色底上約 3:1，低於一般文字的 4.5:1。options.html 同樣處理。 */
   @media (prefers-color-scheme: dark) {
-    dt, .note, .state.off, .coord, .msg, .attrib, .mlabel { color: #a8a8a8; }
+    dt, .note, .state.off, .coord, .msg, .attrib, .mlabel, .lang { color: #a8a8a8; }
     .del { color: #888; }
   }
 </style>
@@ -121,55 +126,70 @@
 <body>
   <header>
     <h1>geo-mock</h1>
-    <label class="switch" title="啟用／停用定位覆寫">
-      <input type="checkbox" id="enabled" aria-label="啟用／停用定位覆寫" disabled>
+    <label class="switch" data-i18n-attr="title:switchTitle">
+      <input type="checkbox" id="enabled" data-i18n-attr="aria-label:switchTitle" disabled>
       <span class="track"></span>
     </label>
   </header>
 
   <div class="search">
     <div class="searchbar">
-      <input id="q" type="search" placeholder="地址或地標，按 Enter 搜尋"
-             autocomplete="off" spellcheck="false" aria-label="搜尋地址或地標">
-      <button type="button" id="go">搜尋</button>
+      <input id="q" type="search" autocomplete="off" spellcheck="false"
+             data-i18n-attr="placeholder:searchPlaceholder,aria-label:searchLabel">
+      <button type="button" id="go" data-i18n="searchButton">搜尋</button>
     </div>
     <ul id="results" hidden></ul>
     <p class="msg" id="msg" role="status"></p>
-    <p class="attrib">地址資料來源：<a href="https://www.openstreetmap.org/copyright"
+    <p class="attrib"><span data-i18n="attribution">地址資料來源：</span><a
+      href="https://www.openstreetmap.org/copyright"
       target="_blank" rel="noreferrer">OpenStreetMap</a></p>
   </div>
 
   <div class="modes">
-    <span class="mlabel">模式</span>
-    <label><input type="radio" name="mode" value="fixed" id="modeFixed" disabled> 固定</label>
-    <label><input type="radio" name="mode" value="jitter" id="modeJitter" disabled> 抖動</label>
+    <span class="mlabel" data-i18n="modeLabel">模式</span>
+    <label><input type="radio" name="mode" value="fixed" id="modeFixed" disabled>
+      <span data-i18n="modeFixed">固定</span></label>
+    <label><input type="radio" name="mode" value="jitter" id="modeJitter" disabled>
+      <span data-i18n="modeJitter">抖動</span></label>
   </div>
 
-  <p class="state" id="state" role="status">讀取中…</p>
+  <p class="state" id="state" role="status" data-state="loading" data-i18n="stateLoading">讀取中…</p>
 
   <dl>
-    <dt>緯度</dt><dd id="lat">–</dd>
-    <dt>經度</dt><dd id="lng">–</dd>
-    <dt>accuracy</dt><dd id="accuracy">–</dd>
-    <dt id="radiusLabel" hidden>抖動半徑</dt><dd id="radius" hidden>–</dd>
+    <dt data-i18n="fieldLat">緯度</dt><dd id="lat">–</dd>
+    <dt data-i18n="fieldLng">經度</dt><dd id="lng">–</dd>
+    <dt data-i18n="fieldAccuracy">accuracy</dt><dd id="accuracy">–</dd>
+    <dt id="radiusLabel" data-i18n="fieldRadius" hidden>抖動半徑</dt><dd id="radius" hidden>–</dd>
   </dl>
 
   <div class="places">
     <ul class="chips" id="places"></ul>
-    <button type="button" id="addPlace" disabled>＋ 存目前座標</button>
+    <button type="button" id="addPlace" data-i18n="addPlace" disabled>＋ 存目前座標</button>
     <form id="placeForm" hidden>
-      <input id="placeName" type="text" placeholder="給這個地點一個名字" maxlength="20"
-             autocomplete="off" aria-label="地點名稱" required>
-      <button type="submit">存</button>
-      <button type="button" id="cancelPlace">取消</button>
+      <input id="placeName" type="text" maxlength="20" autocomplete="off" required
+             data-i18n-attr="placeholder:placeNamePlaceholder,aria-label:placeNameLabel">
+      <button type="submit" data-i18n="save">存</button>
+      <button type="button" id="cancelPlace" data-i18n="cancel">取消</button>
     </form>
   </div>
 
-  <p class="note" id="note">改完即時生效，不必重新整理。但頁面要再呼叫一次定位才看得到 —— 已經抓過位置的頁面不會自己更新。</p>
+  <p class="note" id="note" data-i18n="liveNote">改完即時生效，不必重新整理。</p>
 
-  <footer><a href="#" id="options">進階設定</a></footer>
+  <footer>
+    <a href="#" id="options" data-i18n="openOptions">進階設定</a>
+    <label class="lang">
+      <span data-i18n="languageLabel">語言</span>
+      <!-- 語言名稱各自用自己的語言寫，不跟著介面翻譯 —— 找得到自己的母語比較重要 -->
+      <select id="locale" disabled>
+        <option value="auto" data-i18n="languageAuto">跟隨瀏覽器</option>
+        <option value="zh-TW">繁體中文</option>
+        <option value="en">English</option>
+      </select>
+    </label>
+  </footer>
 
   <script src="defaults.js"></script>
+  <script src="i18n.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

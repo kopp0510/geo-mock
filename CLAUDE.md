@@ -21,6 +21,8 @@ geo-mock/
 ├─ defaults.js        # 設定預設值，bridge/options/verify 三方共用的唯一一份
 ├─ inject.js          # world: MAIN, run_at: document_start — 實際覆寫 geolocation
 ├─ bridge.js          # world: ISOLATED, run_at: document_start — 讀 storage 推給 inject
+├─ i18n.js            # 介面文字（繁中／英文）與套用到 DOM 的工具。popup/options/SW 共用
+├─ _locales/          # 只放 manifest 的擴充描述；介面文字不走這裡（見架構約束）
 ├─ background.js      # service worker。唯一任務：代 popup 執行地址查詢
 ├─ geocode.js         # Nominatim 查詢、快取、每秒 1 次閘門。由 background.js importScripts
 ├─ rules.json         # declarativeNetRequest 規則：送 Nominatim 前改寫 User-Agent
@@ -54,6 +56,16 @@ geo-mock/
   `defaults.js` 必須排在前面。順序反了或檔案漏掉，`bridge.js` 會拿不到
   `GEO_MOCK_DEFAULTS`；那條路徑現在會 `console.error` 並退回真實定位，不會靜默失效
 - `manifest.json` 需 `host_permissions: ["https://nominatim.openstreetmap.org/*"]`
+- **介面文字用自己的字串表（`i18n.js`），不用 `chrome.i18n` 的 `_locales`**：那套
+  跟隨的是瀏覽器 UI 語言，擴充**沒辦法**在執行時切換。這是開發工具，想看英文介面
+  不該逼人去改整台瀏覽器的語言。`_locales/` 只留給 manifest 的描述，那個 Chrome
+  只認原生機制
+- **`manifest.json` 的 `name` 不可以用 `__MSG_...__`**：`tools/verify.js` 的
+  `makeNoBridgeVariant()` 會把 `name` 抄進變體 manifest，而變體目錄沒有 `_locales`，
+  Chrome 會整個拒絕載入它 —— 最後一項會用「變體沒載入」這個跟真正問題無關的理由失敗。
+  第 1 項靜態斷言守著這條
+- **`inject.js` 的 console 訊息固定用中文，不做 i18n**：它跑在 MAIN world，拿不到
+  字串表也拿不到 storage。要翻譯就得把譯文塞進推送的設定裡，不值得
 - **地址查詢必須跑在 service worker，不能搬回 popup**：popup 點到外面就整個銷毀，
   查詢途中被關掉的話結果寫不進快取，重開再查同一個字串就是第二次相同請求 ——
   政策列為 faulty client 的行為。搬回去照樣有搜尋結果，測不出來，
