@@ -19,7 +19,13 @@ GPS 座標，用來檢視系統在不同區域的呈現結果。
 | `jitter` | 以設定座標為中心加隨機偏移，半徑可設 |
 
 jitter 是為了測試座標微幅飄動時 UI 的反應（釘子跳動、重複觸發區域判定）。
-注意：是以**設定的座標**為中心抖動，不是以真實位置為中心。
+注意：是以**設定的座標**為中心抖動，不是以真實位置為中心。每次呼叫都重新抖，
+在半徑內的圓盤上均勻取點。
+
+**實作偏離（已定案）**：`off` 沒有做成第三個模式選項。標題列的啟用開關已經表達
+同一件事，做成三選一等於同一個行為開兩個入口，使用者還得猜哪個優先。所以 popup
+是「開關 + 固定／抖動兩選一」，`enabled: false` 就是 `off`。這也保住了既有的
+`enabled` 儲存狀態與「關掉開關後不再覆寫」那項斷言。
 
 ## Popup 面板（主要介面）
 
@@ -30,12 +36,15 @@ jitter 是為了測試座標微幅飄動時 UI 的反應（釘子跳動、重複
    **按 Enter 或搜尋鈕才查，不做打字即查** —— Nominatim 政策明文禁止 client 端的
    auto-complete，見下方 Geocoding
 3. 資料來源標示：OpenStreetMap
-4. 模式切換：關閉 / 固定 / 抖動（三選一）
+4. 模式切換：固定 / 抖動（兩選一；「關閉」由第 1 項的開關表達，見上方實作偏離）。
+   抖動模式下第 5 項會多顯示一列半徑
 5. 目前座標與 accuracy 顯示
-6. 已存地點 chips + 新增按鈕
+6. 已存地點 chips + 新增按鈕（點 chip 套用、按 × 刪除，上限 12 個；
+   名稱用行內輸入框，不用 `prompt()` —— 那在 extension popup 裡會連 popup 一起關掉）
 7. 底部：進階設定連結
 
-Options 頁放不常改的欄位：altitude、altitudeAccuracy、heading、speed、jitter 半徑。
+Options 頁放不常改的欄位：jitter 半徑（已做），以及 altitude、altitudeAccuracy、
+heading、speed（未做，第三版）。
 
 ## Geocoding
 

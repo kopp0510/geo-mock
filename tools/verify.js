@@ -19,10 +19,12 @@ const os = require('os');
 const EXT_DIR = path.resolve(__dirname, '..');
 const FIXTURES = path.join(__dirname, 'fixtures');
 const PORT = Number(process.env.PORT) || 0;
-const EXPECTED_ASSERTIONS = 8;
+const EXPECTED_ASSERTIONS = 9;
 const SHOTS = path.join(EXT_DIR, '.screenshots');
 const MOVED = { lat: 35.6812, lng: 139.7671, accuracy: 55 };   // 東京車站 —— 刻意挑一組非預設值
 const LIVE = { lat: 48.8584, lng: 2.2945, accuracy: 12 };      // 巴黎鐵塔 —— 驗即時推送用的第二組
+const JITTER_RADIUS = 100;                                     // 公尺，驗 jitter 用
+const JITTER_SAMPLES = 8;
 // Google Maps 右鍵複製出來的原始格式，位數刻意留滿，確認不會被截斷
 const PASTED = '24.262246621321527, 120.62450392661896';
 const PASTED_LAT = '24.262246621321527';
@@ -378,7 +380,60 @@ async function cleanup({ ctx, profile }) {
       results.push(['改設定不重整分頁也生效',
         survived === mark && sameCoords(pushed, LIVE) && pushed.acc === LIVE.accuracy]);
 
-      // 7) Popup 開關關掉 → 不再覆寫。第 2～6 項全在測「開啟」狀態，
+      // 7) jitter 模式：以設定的座標為中心抖動（SPEC 第二版第 7 項）
+      await ext.goto(`chrome-extension://${extId}/options.html`);
+      await ext.fill('#jitterRadius', String(JITTER_RADIUS));
+      await ext.evaluate(() => { document.getElementById('status').className = ''; });
+      await ext.click('button[type=submit]');
+      await ext.waitForFunction(() => document.getElementById('status').className === 'ok');
+      await ext.goto(`chrome-extension://${extId}/popup.html`);
+      await ext.waitForFunction(() => !document.getElementById('modeJitter').disabled);
+      await ext.check('#modeJitter');
+
+      // 一樣不重整測試頁 —— 模式切換也要靠即時推送過去
+      const jitter = await page.evaluate(async ({ center, radius, n }) => {
+        const ask = () => new Promise(res => navigator.geolocation.getCurrentPosition(
+          p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+          () => res(null),
+          { timeout: 3000 }
+        ));
+        // 小範圍用平面近似算距離就夠，差幾公分不影響這個斷言
+        const metersFrom = (p) => {
+          const M = 111320;
+          const dy = (p.lat - center.lat) * M;
+          const dx = (p.lng - center.lng) * M * Math.cos((center.lat * Math.PI) / 180);
+          return Math.hypot(dx, dy);
+        };
+
+        // 等模式推送到達：抖起來之後座標就不再正好等於中心點
+        const t0 = Date.now();
+        let on = false;
+        while (Date.now() - t0 < 3000 && !on) {
+          const p = await ask();
+          if (p && metersFrom(p) > 0) on = true;
+          else await new Promise(r => setTimeout(r, 50));
+        }
+
+        const samples = [];
+        for (let i = 0; i < n; i++) samples.push(await ask());
+        if (samples.some(p => !p)) return { on, failed: true };
+        return {
+          on,
+          max: Math.max(...samples.map(metersFrom)),
+          distinct: new Set(samples.map(p => `${p.lat},${p.lng}`)).size,
+        };
+      }, { center: LIVE, radius: JITTER_RADIUS, n: JITTER_SAMPLES });
+      console.log('jitter 取樣            : ' + JSON.stringify(jitter));
+      // 三件事一起驗：真的抖了、沒抖出半徑、每次都不一樣。
+      // 少了「每次不一樣」的話，「只在切換模式時抖一次然後固定住」也會綠燈。
+      results.push(['jitter 以設定座標為中心抖動',
+        !!jitter.on && !jitter.failed
+        && jitter.max <= JITTER_RADIUS && jitter.distinct >= 2]);
+
+      // 改回 fixed，下一項才是在測「開關關掉」而不是順便測到模式
+      await ext.evaluate(() => chrome.storage.local.set({ mode: 'fixed' }));
+
+      // 8) Popup 開關關掉 → 不再覆寫。第 2～7 項全在測「開啟」狀態，
       //    enabled: false 這條路徑到這裡才第一次被驗到。
       await ext.goto(`chrome-extension://${extId}/popup.html`);
       // 開關的 CSS transition 是 .15s。不等它跑完就截圖，拍到的是過渡中間狀態 ——
@@ -421,7 +476,7 @@ async function cleanup({ ctx, profile }) {
       await cleanup(a);
     }
 
-    // 8) 失敗情境：設定永遠送不到，排隊必須有出口
+    // 9) 失敗情境：設定永遠送不到，排隊必須有出口
     noBridgeDir = makeNoBridgeVariant();
     const b = await launch(chromium, executablePath, noBridgeDir);
     try {

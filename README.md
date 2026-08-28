@@ -19,7 +19,12 @@
 - **地址搜尋**（popup）→ 打「台北車站」這類地址或地標，**按 Enter 或旁邊的搜尋鈕**
   出候選清單（地址 + 座標），點一下就套用。查過的字串會快取，重複查不會再送請求。
   刻意不做打字即查——Nominatim 政策明文禁止 client 端的 auto-complete
-- **進階設定**（options 頁）→ 設定緯度、經度、accuracy。
+- **模式**（popup）→ 固定／抖動兩選一。抖動是以設定的座標為中心、在半徑內每次
+  重新取一點，用來看 UI 在座標微幅飄動時的反應；半徑在進階設定裡調。
+  「關閉」就是把右上角的開關關掉，沒有做成第三個模式
+- **已存地點**（popup）→ 按「＋ 存目前座標」給它一個名字，之後點 chip 就套用回來，
+  按 × 刪掉。上限 12 個
+- **進階設定**（options 頁）→ 設定緯度、經度、accuracy、抖動半徑。
   最上面有「貼上座標」欄，可以把 Google Maps 右鍵複製的
   `24.262246, 120.624503` 這種一整串直接貼進去，會自動拆進下面兩欄
 
@@ -34,9 +39,10 @@
 ## 目前做到哪
 
 第一版（固定座標覆寫）已可用：`getCurrentPosition` 覆寫、options 頁存座標、popup 開關。
-第二版做了地址搜尋 + 候選清單 + 快取、設定即時推送。
+第二版做完了：地址搜尋 + 候選清單 + 快取、設定即時推送、已存地點、jitter 抖動模式。
 
-**還沒做**：已存地點、jitter 抖動模式、`watchPosition`、iframe 支援。
+**還沒做**（都是第三版）：`watchPosition` / `clearWatch`、
+`navigator.permissions.query` 覆寫、iframe 支援、per-site 白名單。
 見 [SPEC.md](SPEC.md) 的實作優先順序。
 
 **已知限制**：頁面自己的 JS 能監聽也能偽造擴充用的 CustomEvent，覆寫也能經
@@ -46,7 +52,7 @@
 ## 開發
 
 ```bash
-node tools/verify.js        # exit 0 = 八項斷言全過
+node tools/verify.js        # exit 0 = 九項斷言全過
 ```
 
 需要 playwright 與 Chrome for Testing（**系統的 Chrome stable 不行**，

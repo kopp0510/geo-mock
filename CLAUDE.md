@@ -24,8 +24,9 @@ geo-mock/
 ├─ background.js      # service worker。唯一任務：代 popup 執行地址查詢
 ├─ geocode.js         # Nominatim 查詢、快取、每秒 1 次閘門。由 background.js importScripts
 ├─ rules.json         # declarativeNetRequest 規則：送 Nominatim 前改寫 User-Agent
-├─ popup.html / popup.js       # 啟用開關、地址搜尋、目前座標一覽、進階設定連結
-├─ options.html / options.js   # 座標設定。最上面的「貼上座標」欄接 Google Maps
+├─ popup.html / popup.js       # 啟用開關、地址搜尋、模式切換（固定／抖動）、
+│                             #   目前座標一覽、已存地點 chips、進階設定連結
+├─ options.html / options.js   # 座標與抖動半徑。最上面的「貼上座標」欄接 Google Maps
 │                             #   右鍵複製的「緯度, 經度」整串，拆進下面兩欄
 ├─ icons/16.png 48.png 128.png
 └─ tools/             # 驗證腳本，不會被打包進擴充（見 tools/CLAUDE.md）
@@ -40,9 +41,11 @@ geo-mock/
   已收到的 seq。`storage.onChanged` 的即時推送與 READY 握手的補送會交錯，
   沒有序號的話舊設定後到就把新的蓋掉。序號擋的是自家的亂序，**擋不住頁面偽造**
   （見「已知限制」）
-- **`bridge.js` 的 `onChanged` 必須過濾 key**：`geocodeCache` / `geocodeLastAt`
-  跟設定放在同一個 storage 區、每次搜尋都會寫。不過濾的話查一次地址就對每個
-  開著的分頁推一次設定
+- **`bridge.js` 的 `WATCHED` 從 `GEO_MOCK_DEFAULTS` 派生，不可手抄**：漏了新欄位
+  會讓「改那個欄位不會即時生效」靜默發生，而 UI 五處都寫著即時生效。
+  例外用 `NOT_WATCHED` 扣掉，每一個都要寫理由（目前只有 `places`：只有 popup
+  讀寫，存個地點不該驚動每個分頁）。`geocodeCache` / `geocodeLastAt` 不在 defaults
+  裡，本來就不會被派生進來
 - manifest 的 `content_scripts` 用 `world` 欄位需要 Chrome 111+
 - **ISOLATED world 是多檔載入，順序有語意依賴**：`["defaults.js", "bridge.js"]`，
   `defaults.js` 必須排在前面。順序反了或檔案漏掉，`bridge.js` 會拿不到
@@ -84,6 +87,10 @@ geo-mock/
    `instanceof`。第三版再處理。
 
 5. **jitter 以「設定的座標」為中心抖動**，不是以真實位置為中心。
+   已實作在 `inject.js` 的 `jitterCoords()`：每次呼叫重新抖，圓盤上均勻取點
+   （半徑要開根號，否則點會擠在圓心），極點附近 `cos(緯度)` 夾了下限免得
+   經度偏移炸成天文數字。`mode` 預設 **必須**是 `'fixed'` —— 好幾項驗證斷言
+   比對的是精確座標。
 
 6. **Nominatim 使用政策是硬約束**（政策原文逐條抄在 SPEC.md）：每秒至多 1 次、
    必須快取、必須可識別、必須標出處，而且 **auto-complete 是明文禁止的**——

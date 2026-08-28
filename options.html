@@ -36,7 +36,8 @@
 </head>
 <body>
   <h1>geo-mock 設定</h1>
-  <p class="sub">這裡設定回報給網站的座標。存檔即時生效，不必重新整理分頁。</p>
+  <p class="sub">這裡設定回報給網站的座標。存檔即時生效，不必重新整理分頁 ——
+    但頁面要再呼叫一次定位才看得到，已經抓過位置的頁面不會自己更新。</p>
 
   <form id="form">
     <label>
@@ -56,11 +57,17 @@
       <span class="name">accuracy<span class="hint">公尺，回報給網站的定位誤差半徑</span></span>
       <input id="accuracy" type="number" step="any" min="0" required>
     </label>
+    <label>
+      <span class="name">抖動半徑<span class="hint">公尺。抖動模式下以上面的座標為中心，
+        每次定位在這個半徑內隨機取一點</span></span>
+      <input id="jitterRadius" type="number" step="any" min="0" required>
+    </label>
     <button type="submit">儲存</button><span id="status" role="status"></span>
   </form>
 
   <footer>
-    altitude、heading、speed、jitter 半徑等欄位尚未實作（見 SPEC.md 第二／三版）。
+    altitude、heading、speed 等欄位尚未實作（見 SPEC.md 第三版）。
+    模式切換（固定／抖動）在 popup。
   </footer>
 
   <script src="defaults.js"></script>

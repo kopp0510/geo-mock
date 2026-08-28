@@ -3,7 +3,7 @@
 (() => {
   'use strict';
 
-  const FIELDS = ['lat', 'lng', 'accuracy'];
+  const FIELDS = ['lat', 'lng', 'accuracy', 'jitterRadius'];
   const el = Object.fromEntries(FIELDS.map(k => [k, document.getElementById(k)]));
   const form = document.getElementById('form');
   const status = document.getElementById('status');
@@ -13,8 +13,8 @@
     status.className = kind;
   }
 
-  // 讀的是完整預設（含 enabled），但只回填與寫出 FIELDS ——
-  // enabled 歸 popup 管，這裡不能順手把一份陳舊的值寫回去。
+  // 讀的是完整預設（含 enabled、mode、places），但只回填與寫出 FIELDS ——
+  // 那幾個歸 popup 管，這裡不能順手把一份陳舊的值寫回去。
   chrome.storage.local.get(GEO_MOCK_DEFAULTS, (saved) => {
     if (chrome.runtime.lastError) {
       say('讀取設定失敗:' + chrome.runtime.lastError.message, 'err');
@@ -50,6 +50,7 @@
     if (Math.abs(values.lat) > 90)  { say('緯度必須在 -90 ～ 90 之間', 'err'); el.lat.focus(); return; }
     if (Math.abs(values.lng) > 180) { say('經度必須在 -180 ～ 180 之間', 'err'); el.lng.focus(); return; }
     if (values.accuracy < 0)        { say('accuracy 不能是負數', 'err'); el.accuracy.focus(); return; }
+    if (values.jitterRadius < 0)    { say('抖動半徑不能是負數', 'err'); el.jitterRadius.focus(); return; }
 
     chrome.storage.local.set(values, () => {
       if (chrome.runtime.lastError) {

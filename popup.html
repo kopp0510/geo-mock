@@ -57,6 +57,12 @@
   /* Nominatim 使用政策要求顯示出處，這行不能拿掉（見 SPEC.md） */
   .attrib { margin: .35rem 0 0; color: #666; font-size: .85em; }
 
+  /* 模式切換 */
+  .modes { display: flex; align-items: center; gap: .9rem; margin: .7rem 0 0; }
+  .modes label { display: flex; align-items: center; gap: .25rem; }
+  .modes input { margin: 0; }
+  .mlabel { color: #666; }
+
   .state { margin: .75rem 0 0; font-weight: 600; }
   .state.on  { color: #157347; }
   .state.off { color: #666; }
@@ -65,13 +71,50 @@
   dt { color: #666; }
   dd { margin: 0; font-variant-numeric: tabular-nums; }
 
+  /* 已存地點 */
+  .places { margin: .8rem 0 0; }
+  .chips {
+    list-style: none; display: flex; flex-wrap: wrap; gap: .35rem;
+    margin: 0; padding: 0;
+  }
+  .chips:not(:empty) { margin-bottom: .5rem; }
+  .chips li {
+    display: flex; align-items: stretch;
+    border: 1px solid #0002; border-radius: 1rem; overflow: hidden;
+  }
+  .chips li:hover { background: #2563eb14; }
+  .chip, .del { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  .chip {
+    padding: .15rem .2rem .15rem .6rem; max-width: 8.5rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .del { padding: .15rem .5rem .15rem .2rem; color: #999; }
+  .del:hover { color: #c00; }
+  #addPlace {
+    font: inherit; padding: .2rem .7rem; color: inherit; cursor: pointer;
+    background: none; border: 1px dashed #bbb; border-radius: 1rem;
+  }
+  #addPlace[disabled] { opacity: .5; cursor: default; }
+  #placeForm { display: flex; gap: .3rem; }
+  /* display: flex 的優先級高過 [hidden] 的 UA 預設，不補這行的話
+     JS 設了 hidden 表單還是看得見。同理套用在往後任何有 display 的可隱藏元素 */
+  [hidden] { display: none !important; }
+  #placeName {
+    flex: 1; min-width: 0; padding: .3rem .4rem; font: inherit; box-sizing: border-box;
+    border: 1px solid #bbb; border-radius: 4px; background: Field; color: FieldText;
+  }
+  #placeForm button { font: inherit; padding: .3rem .6rem; border: 0; border-radius: 4px; cursor: pointer; }
+  #placeForm button[type=submit] { background: #2563eb; color: #fff; }
+  #cancelPlace { background: #0002; color: inherit; }
+
   .note { margin: .8rem 0 0; padding-top: .8rem; border-top: 1px solid #0002; color: #666; }
   footer { margin-top: .7rem; }
   a { color: #2563eb; }
 
   /* #666 在深色底上約 3:1，低於一般文字的 4.5:1。options.html 同樣處理。 */
   @media (prefers-color-scheme: dark) {
-    dt, .note, .state.off, .coord, .msg, .attrib { color: #a8a8a8; }
+    dt, .note, .state.off, .coord, .msg, .attrib, .mlabel { color: #a8a8a8; }
+    .del { color: #888; }
   }
 </style>
 </head>
@@ -96,13 +139,31 @@
       target="_blank" rel="noreferrer">OpenStreetMap</a></p>
   </div>
 
+  <div class="modes">
+    <span class="mlabel">模式</span>
+    <label><input type="radio" name="mode" value="fixed" id="modeFixed" disabled> 固定</label>
+    <label><input type="radio" name="mode" value="jitter" id="modeJitter" disabled> 抖動</label>
+  </div>
+
   <p class="state" id="state" role="status">讀取中…</p>
 
   <dl>
     <dt>緯度</dt><dd id="lat">–</dd>
     <dt>經度</dt><dd id="lng">–</dd>
     <dt>accuracy</dt><dd id="accuracy">–</dd>
+    <dt id="radiusLabel" hidden>抖動半徑</dt><dd id="radius" hidden>–</dd>
   </dl>
+
+  <div class="places">
+    <ul class="chips" id="places"></ul>
+    <button type="button" id="addPlace" disabled>＋ 存目前座標</button>
+    <form id="placeForm" hidden>
+      <input id="placeName" type="text" placeholder="給這個地點一個名字" maxlength="20"
+             autocomplete="off" aria-label="地點名稱" required>
+      <button type="submit">存</button>
+      <button type="button" id="cancelPlace">取消</button>
+    </form>
+  </div>
 
   <p class="note" id="note">改完即時生效，不必重新整理。但頁面要再呼叫一次定位才看得到 —— 已經抓過位置的頁面不會自己更新。</p>
 

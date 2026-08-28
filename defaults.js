@@ -12,6 +12,13 @@ var GEO_MOCK_DEFAULTS = {
   lat: 25.0330,       // 台北 101 附近
   lng: 121.5654,
   accuracy: 20,       // 公尺
+  // 'fixed' = 就回報上面那組座標；'jitter' = 以它為中心隨機偏移。
+  // **預設必須是 fixed** —— 好幾項驗證斷言比對的是精確座標，預設抖動會全紅。
+  mode: 'fixed',
+  jitterRadius: 50,   // 公尺。jitter 模式的最大偏移半徑
+  // 已存地點。只有 popup 讀寫，bridge.js 的 WATCHED 刻意不含它 ——
+  // 存一個地點不該對每個開著的分頁推一次設定。
+  places: [],         // [{ label, lat, lng }]，上限見 popup.js 的 PLACE_MAX
 };
 
 // node 端（tools/verify.js）用；瀏覽器裡沒有 module，這行會被跳過。

@@ -5,13 +5,30 @@
   'use strict';
 
   const el = Object.fromEntries(
-    ['enabled', 'state', 'lat', 'lng', 'accuracy', 'options', 'q', 'go', 'results', 'msg']
+    ['enabled', 'state', 'lat', 'lng', 'accuracy', 'options', 'q', 'go', 'results', 'msg',
+      'places', 'addPlace', 'placeForm', 'placeName', 'cancelPlace',
+      'modeFixed', 'modeJitter', 'radiusLabel', 'radius']
       .map(k => [k, document.getElementById(k)])
   );
+
+  const PLACE_MAX = 12;   // 存到滿就停，chips 再多下去 popup 會被推得很長
+  let places = [];
 
   // 最後一次讀到／寫入的座標。選了搜尋候選之後只換 lat/lng，
   // accuracy 不在候選資料裡（Nominatim 不提供），要靠這份補齊畫面。
   let current = {};
+
+  // 模式切換只有「固定／抖動」兩個，沒有「關閉」—— 那由上面的開關表達，
+  // 否則同一件事會有兩個入口。SPEC 寫的是三選一，偏離的理由記在 SPEC.md。
+  function showMode() {
+    const jitter = current.mode === 'jitter';
+    el.modeFixed.checked = !jitter;
+    el.modeJitter.checked = jitter;
+    // 半徑只在抖動模式下有意義，固定模式顯示它只會讓人以為它有作用
+    el.radiusLabel.hidden = !jitter;
+    el.radius.hidden = !jitter;
+    el.radius.textContent = current.jitterRadius + ' m';
+  }
 
   function showCoords(patch) {
     current = { ...current, ...patch };
@@ -43,7 +60,12 @@
       el.enabled.checked = !!s.enabled;
       el.enabled.disabled = false;
       setState(s.enabled);
-      showCoords(s);
+      showCoords(s);          // s 是完整設定，mode 與 jitterRadius 也一起進 current
+      showMode();
+      el.modeFixed.disabled = false;
+      el.modeJitter.disabled = false;
+      places = Array.isArray(s.places) ? s.places : [];
+      renderPlaces();
     });
   } catch (err) {
     // 同步例外（如 Extension context invalidated）。bridge.js 也是這樣處理的，
@@ -182,6 +204,106 @@
   });
 
   el.go.addEventListener('click', submit);
+
+  // 兩顆 radio 共用一個 handler：值就在 e.target.value 上，分開寫只是重複。
+  function onModeChange(e) {
+    const mode = e.target.value;
+    try {
+      chrome.storage.local.set({ mode }, () => {
+        if (chrome.runtime.lastError) {
+          showMode();     // 沒存成就把畫面扳回實際值，不要顯示一個沒生效的狀態
+          say('模式儲存失敗:' + chrome.runtime.lastError.message, true);
+          return;
+        }
+        current.mode = mode;
+        showMode();
+        say(mode === 'jitter' ? `抖動模式，半徑 ${current.jitterRadius} m` : '固定模式');
+      });
+    } catch (err) {
+      showMode();
+      console.error('[geo-mock] popup 儲存模式失敗:', err);
+      say('模式儲存失敗:' + err.message, true);
+    }
+  }
+
+  el.modeFixed.addEventListener('change', onModeChange);
+  el.modeJitter.addEventListener('change', onModeChange);
+
+  // ── 已存地點 ────────────────────────────────────────────────
+  // 只有這裡讀寫 places。bridge.js 的 WATCHED 不含這個鍵，所以存／刪地點
+  // 不會對每個開著的分頁推一次設定。
+
+  function placeChip(place, index) {
+    const use = document.createElement('button');
+    use.type = 'button';
+    use.className = 'chip';
+    use.title = `${place.lat}, ${place.lng}`;
+    use.textContent = place.label;      // 使用者自己打的字，一律 textContent
+    use.addEventListener('click', () => apply(place));
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'del';
+    del.title = '刪除';
+    del.setAttribute('aria-label', `刪除 ${place.label}`);
+    del.textContent = '×';
+    // 用 index 而不是比對內容：同名同座標存兩次也刪得掉正確的那個
+    del.addEventListener('click', () => savePlaces(places.filter((_, n) => n !== index)));
+
+    const li = document.createElement('li');
+    li.append(use, del);
+    return li;
+  }
+
+  function renderPlaces() {
+    el.places.replaceChildren(...places.map(placeChip));
+    const full = places.length >= PLACE_MAX;
+    el.addPlace.disabled = full;
+    el.addPlace.textContent = full ? `已存滿 ${PLACE_MAX} 個` : '＋ 存目前座標';
+  }
+
+  function savePlaces(next) {
+    try {
+      chrome.storage.local.set({ places: next }, () => {
+        if (chrome.runtime.lastError) {
+          say('地點儲存失敗:' + chrome.runtime.lastError.message, true);
+          return;
+        }
+        places = next;
+        renderPlaces();
+      });
+    } catch (err) {
+      console.error('[geo-mock] popup 儲存地點失敗:', err);
+      say('地點儲存失敗:' + err.message, true);
+    }
+  }
+
+  function closePlaceForm() {
+    el.placeForm.hidden = true;
+    el.addPlace.hidden = false;
+  }
+
+  // 不用 prompt()：在 extension popup 裡不可靠（會連 popup 一起關掉）
+  el.addPlace.addEventListener('click', () => {
+    el.placeForm.hidden = false;
+    el.addPlace.hidden = true;
+    el.placeName.value = '';
+    el.placeName.focus();
+  });
+
+  el.cancelPlace.addEventListener('click', closePlaceForm);
+
+  el.placeForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const label = el.placeName.value.trim();
+    if (!label) { el.placeName.focus(); return; }
+    if (!Number.isFinite(current.lat) || !Number.isFinite(current.lng)) {
+      say('還沒讀到目前座標，等一下再試', true);
+      return;
+    }
+    savePlaces([...places, { label, lat: current.lat, lng: current.lng }]);
+    closePlaceForm();
+  });
 
   el.options.addEventListener('click', (e) => {
     e.preventDefault();

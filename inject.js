@@ -76,13 +76,37 @@
   // 兩邊各主動出手一次，誰先載入都接得上。
   document.dispatchEvent(new CustomEvent(EVT_READY));
 
+  // 以**設定的座標**為中心，在 jitterRadius 公尺內隨機取一點。
+  // 不是以真實位置為中心 —— 那會需要先拿到真實定位，也不是這個模式的用意
+  // （CLAUDE.md 陷阱 5）。
+  //
+  // 半徑開根號是為了讓點在圓盤上均勻分布：直接用 radius * random() 的話，
+  // 靠近圓心的環面積小卻分到同樣多的點，看起來會擠在中間。
+  function jitterCoords(s) {
+    const radius = Number(s.jitterRadius);
+    if (!Number.isFinite(radius) || radius <= 0) return { lat: s.lat, lng: s.lng };
+
+    const METERS_PER_DEGREE = 111320;        // 緯度一度的長度，經度還要再乘 cos(緯度)
+    const dist = radius * Math.sqrt(Math.random());
+    const angle = Math.random() * 2 * Math.PI;
+    // 極點附近 cos 會趨近 0，除下去會炸出天文數字的經度偏移。
+    // 夾一個下限，寧可在極圈內抖得比設定值窄，也不要吐出無意義的座標。
+    const shrink = Math.max(Math.cos((s.lat * Math.PI) / 180), 1e-6);
+    return {
+      lat: s.lat + (dist * Math.cos(angle)) / METERS_PER_DEGREE,
+      lng: s.lng + (dist * Math.sin(angle)) / (METERS_PER_DEGREE * shrink),
+    };
+  }
+
   // 注意：這是普通物件，不是真的 GeolocationPosition。
   // 少數網站會檢查 prototype 或 instanceof（CLAUDE.md 陷阱 4，第三版再處理）。
   function makePosition(s) {
+    // 每次呼叫都重新抖，這正是這個模式的用途：測 UI 在座標微幅飄動時的反應
+    const at = s.mode === 'jitter' ? jitterCoords(s) : { lat: s.lat, lng: s.lng };
     return {
       coords: {
-        latitude: s.lat,
-        longitude: s.lng,
+        latitude: at.lat,
+        longitude: at.lng,
         accuracy: s.accuracy,
         altitude: null,
         altitudeAccuracy: null,
@@ -98,7 +122,8 @@
       if (!announced) {
         announced = true;
         // 預設開啟且套用到所有網站，不留痕跡的話「為什麼我在台北 101」無從查起。
-        console.info('[geo-mock] 定位已覆寫為', settings.lat, settings.lng);
+        console.info('[geo-mock] 定位已覆寫為', settings.lat, settings.lng,
+          settings.mode === 'jitter' ? `（抖動半徑 ${settings.jitterRadius} m）` : '');
       }
       // 非同步回呼，跟原生 API 的行為一致（同步呼叫 success 會讓某些網站的流程錯亂）
       setTimeout(() => success(makePosition(settings)), 0);
