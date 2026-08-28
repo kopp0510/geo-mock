@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>geo-mock 驗證頁</title>
+<script>
+// 在 <head> 最頂端立刻呼叫 —— 模擬「頁面比 chrome.storage 非同步讀取更早要定位」。
+// inject.js 是 document_start，覆寫一定已就位；但 bridge.js 的設定此刻多半還沒送到，
+// 走的正是 pending 佇列那條路（CLAUDE.md 陷阱 1）。
+window.__early = null; window.__earlyErr = null;
+const t0 = Date.now();
+navigator.geolocation.getCurrentPosition(
+  p => { window.__early = { lat: p.coords.latitude, lng: p.coords.longitude,
+                            ms: Date.now() - t0 }; },
+  e => { window.__earlyErr = 'code=' + e.code + ' ' + e.message; }
+);
+</script>
+<h1>geo-mock test page</h1>

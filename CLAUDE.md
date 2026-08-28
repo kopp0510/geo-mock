@@ -22,7 +22,8 @@ geo-mock/
 ├─ bridge.js          # world: ISOLATED, run_at: document_start — 讀 storage 推給 inject
 ├─ popup.html / popup.js
 ├─ options.html / options.js
-└─ icons/16.png 48.png 128.png
+├─ icons/16.png 48.png 128.png
+└─ tools/             # 驗證腳本，不會被打包進擴充（見 tools/CLAUDE.md）
 ```
 
 ## 架構約束（已定案，不重新討論）
@@ -68,21 +69,34 @@ geo-mock/
 3. 跑 **code-simplifier**（對該段新增/修改的程式碼，官方 agent）
 4. 跑 **code-review**（該段 diff，每段全量跑；修掉 Critical/Important 才續行）
 5. **再測一次** — 確認步驟 3、4 沒破壞行為：
-   - 重新載入擴充：`chrome://extensions` → 開發者模式 → 「重新載入」該擴充；
-     檢查 service worker 與 content script 的 console 無錯誤
-   - **playwright 開真實瀏覽器驗證**：以 persistent context 載入 unpacked 擴充
-     （`--disable-extensions-except=<專案路徑> --load-extension=<專案路徑>`，
-     需 headed 或 new headless 模式；MV3 擴充在舊 headless 下不載入 —
-     實作時先驗證此前提），開任一測試頁呼叫
-     `navigator.geolocation.getCurrentPosition()`，斷言回傳座標等於設定值
+   - `node tools/verify.js` —— exit 0 才算過。它會開真實瀏覽器載入未封裝擴充，
+     斷言覆寫生效、請求排隊、以及設定永不到達時不會懸掛（細節見 tools/CLAUDE.md）
+   - **只能用 Chrome for Testing。系統的 Chrome stable 不行** —— 151 實測已忽略
+     `--load-extension`，擴充根本不載入，而且沒有任何錯誤訊息，很容易誤判成程式有 bug
+   - 手動確認時：`chrome://extensions` → 開發者模式 → 重新載入該擴充，
+     檢查 content script 的 console 無錯誤
    - 改到 popup / options UI 時截圖，一律存 `.screenshots/`（已 gitignore），
      勿丟專案根目錄
    - 改到 geocoding 時：`curl -A 'geo-mock/1.0' 'https://nominatim.openstreetmap.org/search?format=json&q=<地址>'`
      驗證 API 實際回應（注意 SPEC.md「未解事項」：fetch 無法設 User-Agent，
      擴充端能否通過 Nominatim 識別要求尚未確認）
+
 6. **再 commit**（最終版本）
 
 驗證不過 → 修完重跑步驟 5，不可帶著紅燈進步驟 6。
+
+## 已知限制（review 提出，刻意不修，別當成 bug 重查）
+
+- **覆寫可被頁面看穿也可被關掉**：`geo-mock:settings` / `geo-mock:ready` 是 document
+  上的普通 CustomEvent，頁面自己的 JS 能監聽（讀到你設的座標）也能偽造
+  （送一個 `{"enabled":false}` 就關掉覆寫）。跨 world 沒有私密通道可用，這是架構的
+  必然代價。**在會偵測 location spoofing 的網站上測不出預期結果時，先想到這條。**
+  第二版做 `storage.onChanged` 即時推送時要重新設計事件協定（帶遞增序號）。
+- **`getCurrentPosition` 可被繞過**：覆寫是實例上的賦值，
+  `Geolocation.prototype.getCurrentPosition.call(navigator.geolocation, ...)` 走的是原生。
+  同樣屬 SPEC 陷阱 4 的範圍，第三版再處理。
+- **設定送不到時最壞花掉呼叫端 timeout 的兩倍**：見 `inject.js` 逾時分支的註解。
+  極端路徑，正常情況設定 20ms 內就到。
 
 ## CLAUDE.md 維護
 
