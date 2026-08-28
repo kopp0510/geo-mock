@@ -80,8 +80,12 @@ geo-mock/
 1. **時序**：`chrome.storage.local.get` 是非同步，頁面可能在設定送達前就呼叫定位 API。
    `inject.js` 要把請求排隊，等設定到達再回應。**這段不能省。**
 
-2. **`watchPosition` 必須同步回傳 watch id**，不能等設定載入才回。自己維護計數器當 id，
-   再用 `setInterval` 定期送位置。
+2. **`watchPosition` 必須同步回傳 watch id**，不能等設定載入才回。已實作：
+   `inject.js` 自己維護計數器當 id（從 1000000 起跳，避開與原生 id 碰撞），
+   位置靠 `setInterval` 送。設定還沒到時**不能排隊等**——id 現在就得回傳，
+   所以改成先發 id、位置晚點再送，並用一道逾時保證設定永遠不來時 watch 會被
+   交回原生，不讓呼叫端無聲等一輩子。`applyWatch()` 是唯一決定「怎麼送」的地方，
+   設定每次變更都會重跑它，所以它必須能從任何狀態切到任何狀態。
 
 3. **`navigator.permissions.query({name:'geolocation'})`** — 有些網站先查權限，看到
    prompt 就不呼叫定位了。可能需一併覆寫成 granted。
@@ -163,6 +167,8 @@ geo-mock/
   的 storage 呼叫擋住了），以及 `cachePut` 自己失敗（storage 配額用盡，那條是
   刻意吞掉的）。兩者結果相同：下次查同一個字串重送一次請求。
   記在這裡是為了讓下一輪 review 不用再挖一次。
+- **jitter 模式下 `watchPosition` 的重送間隔寫死 1 秒**（`JITTER_INTERVAL_MS`），
+  沒有做成設定項。要模擬更快或更慢的移動就得改碼。
 - **預設 `enabled: true`，裝上就對所有網站生效**。task 3 加了 popup 開關之後重新
   檢討過，決定維持開啟：載入未封裝擴充本身就是明確的開發意圖，再要求「裝完還要
   手動打開」對開發工具是多餘的一步。代價是忘了關的話每個網站都在回報設定座標，

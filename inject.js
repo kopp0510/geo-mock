@@ -17,10 +17,22 @@
   if (!geo) return;
 
   const nativeGetCurrentPosition = geo.getCurrentPosition.bind(geo);
+  // 覆寫沒開的 watch 要交回原生手上，所以連 clearWatch 也得先留一份
+  const nativeWatchPosition = geo.watchPosition && geo.watchPosition.bind(geo);
+  const nativeClearWatch = geo.clearWatch && geo.clearWatch.bind(geo);
+
+  // jitter 模式下重送位置的間隔
+  const JITTER_INTERVAL_MS = 1000;
 
   // 「不介入，走真實定位」的終端內容。settings 只會被整份替換、不會被就地改動，
   // 所以兩個退回點共用同一個物件（命名與 bridge.js 的 DISABLED 對齊）。
   const DISABLED = { enabled: false };
+
+  // 我們發出去的 watch id 從一個大數起跳。頁面若用 Geolocation.prototype 繞過覆寫
+  // 拿到原生 watch（那條路走得通，見 CLAUDE.md「已知限制」），再把原生 id 丟進
+  // 我們的 clearWatch，小數字很容易撞上；從 1e6 開始基本上撞不到。
+  let nextWatchId = 1000000;
+  const watches = new Map();
 
   let settings = null;   // null 代表設定還沒送到，不是「沒有設定」
   let announced = false;
@@ -70,6 +82,14 @@
     settings = msg.settings;
     announced = false;   // 設定換過了，讓下一次覆寫再印一行，座標變更才追得到
     flush();
+
+    // 座標換了就等於位置變了，那正是 watchPosition 該回報的事。
+    // 順帶處理三種切換：等設定的 watch 現在可以開工、模式改了要換送法、
+    // 開關關掉要把 watch 交回原生。
+    for (const w of watches.values()) {
+      w.armed = true;
+      applyWatch(w);
+    }
   });
 
   // 握手：bridge.js 可能比本檔晚註冊 listener，也可能早一步就送出設定。
@@ -174,5 +194,85 @@
       return;
     }
     serve(success, error, options);
+  };
+
+  // ── watchPosition / clearWatch ───────────────────────────────
+  // 跟 getCurrentPosition 最大的不同：**id 必須同步回傳**（陷阱 2）。呼叫端拿到
+  // 之後可能立刻 clearWatch，所以不能像 getCurrentPosition 那樣把整個呼叫排隊等
+  // 設定 —— 只能先發 id，位置晚點再送。
+
+  function stopDelivery(w) {
+    if (w.timer !== null) { clearInterval(w.timer); w.timer = null; }
+    if (w.nativeId !== null && nativeClearWatch) {
+      nativeClearWatch(w.nativeId);
+      w.nativeId = null;
+    }
+  }
+
+  // 依「目前的設定」決定這個 watch 怎麼送位置。設定每次變更都會再跑一次，
+  // 所以它必須能從任何狀態切到任何狀態，先把舊的送法整個停掉再重新開始。
+  function applyWatch(w) {
+    if (w.stopped || !w.armed) return;
+    clearTimeout(w.fallbackTimer);
+    stopDelivery(w);
+
+    if (!settings || !settings.enabled) {
+      // 覆寫沒開：交回原生，並記下它的 id，好讓我們的 clearWatch 停得掉
+      if (nativeWatchPosition) w.nativeId = nativeWatchPosition(w.success, w.error, w.options);
+      return;
+    }
+
+    // 非同步送第一筆，跟原生 API 的行為一致（同步呼叫 success 會讓某些網站的流程錯亂）
+    setTimeout(() => { if (!w.stopped) w.success(makePosition(settings)); }, 0);
+
+    // 固定模式送這一次就安靜：座標不會變，而真正的 watchPosition 只在位置**變化**
+    // 時才回呼，每秒重送一組一模一樣的座標是在洗版。
+    // jitter 每次都是新座標，持續送才有意義 —— 那正是這個模式存在的理由。
+    if (settings.mode === 'jitter') {
+      w.timer = setInterval(() => {
+        if (!w.stopped) w.success(makePosition(settings));
+      }, JITTER_INTERVAL_MS);
+    }
+  }
+
+  geo.watchPosition = function (success, error, options) {
+    const id = nextWatchId++;
+    const w = {
+      success, error, options,
+      timer: null, nativeId: null, fallbackTimer: null,
+      armed: false,     // 設定到了沒
+      stopped: false,   // clearWatch 過了沒
+    };
+    watches.set(id, w);
+
+    if (settings === null) {
+      // 設定還沒到。跟 getCurrentPosition 的排隊同一個道理，但這裡不能等 ——
+      // id 現在就得回傳。設定永遠不來的話，這道逾時會把 watch 交回原生，
+      // 不讓呼叫端無聲無息地等一輩子。
+      w.fallbackTimer = setTimeout(() => {
+        if (settings === null) settings = DISABLED;
+        w.armed = true;
+        applyWatch(w);
+      }, SETTINGS_WAIT_MS);
+    } else {
+      w.armed = true;
+      applyWatch(w);
+    }
+
+    return id;   // 同步回傳，這是這個 API 的硬要求
+  };
+
+  geo.clearWatch = function (id) {
+    const w = watches.get(id);
+    if (!w) {
+      // 不是我們發的 id —— 頁面可能用 prototype 繞過覆寫建了原生 watch。
+      // 轉給原生，不要默默吃掉。
+      if (nativeClearWatch) nativeClearWatch(id);
+      return;
+    }
+    w.stopped = true;
+    clearTimeout(w.fallbackTimer);
+    stopDelivery(w);
+    watches.delete(id);
   };
 })();

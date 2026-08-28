@@ -27,6 +27,20 @@ jitter 是為了測試座標微幅飄動時 UI 的反應（釘子跳動、重複
 是「開關 + 固定／抖動兩選一」，`enabled: false` 就是 `off`。這也保住了既有的
 `enabled` 儲存狀態與「關掉開關後不再覆寫」那項斷言。
 
+## watchPosition
+
+`getCurrentPosition` 是問一次答一次，`watchPosition` 是訂閱 —— 位置變了就再回呼一次。
+導航、外送追蹤、跑步紀錄這類要跟著使用者移動的網站用它。覆寫的行為：
+
+- **watch id 是自己維護的計數器，同步回傳**。呼叫端拿到之後可能立刻 `clearWatch`，
+  所以不能像 `getCurrentPosition` 那樣把整個呼叫排隊等設定到達
+- **固定模式：送一次就安靜。** 座標不會變，而真正的 `watchPosition` 只在位置**變化**
+  時才回呼，每秒重送一組一模一樣的座標是在洗版
+- **抖動模式：每秒送一次新座標。** 這正是 jitter 存在的理由（測 UI 在座標飄動時的反應）。
+  間隔寫死 1 秒，沒有做成設定項
+- 設定變更時，已經在跑的 watch 會跟著改 —— 換座標等於位置變了，那正是它該回報的事
+- **開關關掉時，既有的 watch 會交回原生**（走真實定位），不是停止回呼
+
 ## Popup 面板（主要介面）
 
 由上而下：
@@ -110,7 +124,7 @@ Chrome 根本不替擴充頁的 fetch 送這個 header。等於兩條識別路�
 7. jitter 模式
 
 **第三版（撞到再做）**
-8. `watchPosition` / `clearWatch`
+8. `watchPosition` / `clearWatch` —— **已做**，行為見上方「watchPosition」
 9. `navigator.permissions.query` 覆寫成 granted
 10. `all_frames: true` 支援 iframe
 11. per-site 白名單

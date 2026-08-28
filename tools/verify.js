@@ -19,7 +19,7 @@ const os = require('os');
 const EXT_DIR = path.resolve(__dirname, '..');
 const FIXTURES = path.join(__dirname, 'fixtures');
 const PORT = Number(process.env.PORT) || 0;
-const EXPECTED_ASSERTIONS = 10;
+const EXPECTED_ASSERTIONS = 11;
 const SHOTS = path.join(EXT_DIR, '.screenshots');
 const MOVED = { lat: 35.6812, lng: 139.7671, accuracy: 55 };   // 東京車站 —— 刻意挑一組非預設值
 const LIVE = { lat: 48.8584, lng: 2.2945, accuracy: 12 };      // 巴黎鐵塔 —— 驗即時推送用的第二組
@@ -459,6 +459,13 @@ async function cleanup({ ctx, profile }) {
         document.addEventListener('geo-mock:settings', (e) => window.__pushed.push(e.detail));
       });
 
+      // 上一項收尾那個 set({ mode: 'fixed' }) 的推送可能還在路上（storage.onChanged
+      // → bridge 重讀 storage → dispatch 是好幾個 tick 之後的事，await 那個 set 的
+      // callback 等不到它）。不歸零的話它會被算成「places 觸發的推送」——
+      // 實測會偶發地把這一項弄紅。
+      await page.waitForTimeout(500);
+      await page.evaluate(() => { window.__pushed.length = 0; });
+
       // 存一個地點：places 在 NOT_WATCHED 裡，這個寫入不該觸發任何推送
       await ext.evaluate((place) => new Promise(r =>
         chrome.storage.local.set({ places: [place] }, r)), SECRET_PLACE);
@@ -479,7 +486,48 @@ async function cleanup({ ctx, profile }) {
         && pushedKeys.length > 0 && !pushedKeys.includes('places')
         && !leak.includes(SECRET_PLACE.label)]);
 
-      // 9) Popup 開關關掉 → 不再覆寫。第 2～7 項全在測「開啟」狀態，
+      // 9) watchPosition / clearWatch（SPEC 第三版第 8 項）
+      //
+      // 這裡驗的是三件在 getCurrentPosition 上不會出現的事：id 必須**同步**回傳
+      // （陷阱 2）、固定模式送一次就安靜（座標不變，真正的 watchPosition 只在
+      // 位置變化時回呼）、jitter 模式持續送。
+      const watchIdType = await page.evaluate(() => {
+        window.__watch = [];
+        window.__watchId = navigator.geolocation.watchPosition((p) => {
+          window.__watch.push({ lat: p.coords.latitude, lng: p.coords.longitude });
+        });
+        return typeof window.__watchId;   // 回傳的當下就得是數字，不能是 undefined
+      });
+      await page.waitForTimeout(2500);
+      const fixedTicks = await page.evaluate(() => window.__watch.length);
+
+      // 切到 jitter：座標開始變動，watch 就該持續回報
+      await ext.goto(`chrome-extension://${extId}/popup.html`);
+      await ext.waitForFunction(() => !document.getElementById('modeJitter').disabled);
+      await ext.check('#modeJitter');
+      await page.waitForTimeout(3300);
+      const jitterTicks = await page.evaluate(() => window.__watch.slice(1));
+
+      // 停掉之後就該完全安靜
+      await page.evaluate(() => navigator.geolocation.clearWatch(window.__watchId));
+      const atClear = await page.evaluate(() => window.__watch.length);
+      await page.waitForTimeout(1500);
+      const afterClear = await page.evaluate(() => window.__watch.length);
+
+      const jitterDistinct = new Set(jitterTicks.map(p => `${p.lat},${p.lng}`)).size;
+      console.log('watchPosition       : '
+        + JSON.stringify({ id: watchIdType, fixedTicks, jitter: jitterTicks.length,
+          jitterDistinct, atClear, afterClear }));
+      results.push(['watchPosition：固定送一次、jitter 持續送、clearWatch 停得掉',
+        watchIdType === 'number'
+        && fixedTicks === 1
+        && jitterTicks.length >= 3 && jitterDistinct >= 2
+        && afterClear === atClear]);
+
+      // 改回 fixed，下一項才是在測開關而不是順便測到模式
+      await ext.evaluate(() => new Promise(r => chrome.storage.local.set({ mode: 'fixed' }, r)));
+
+      // 10) Popup 開關關掉 → 不再覆寫。第 2～9 項全在測「開啟」狀態，
       //    enabled: false 這條路徑到這裡才第一次被驗到。
       await ext.goto(`chrome-extension://${extId}/popup.html`);
       // 開關的 CSS transition 是 .15s。不等它跑完就截圖，拍到的是過渡中間狀態 ——
@@ -522,7 +570,7 @@ async function cleanup({ ctx, profile }) {
       await cleanup(a);
     }
 
-    // 10) 失敗情境：設定永遠送不到，排隊必須有出口
+    // 11) 失敗情境：設定永遠送不到，排隊必須有出口
     noBridgeDir = makeNoBridgeVariant();
     const b = await launch(chromium, executablePath, noBridgeDir);
     try {

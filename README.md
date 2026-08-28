@@ -41,9 +41,11 @@
 第一版（固定座標覆寫）已可用：`getCurrentPosition` 覆寫、options 頁存座標、popup 開關。
 第二版做完了：地址搜尋 + 候選清單 + 快取、設定即時推送、已存地點、jitter 抖動模式。
 
-**還沒做**（都是第三版）：`watchPosition` / `clearWatch`、
-`navigator.permissions.query` 覆寫、iframe 支援、per-site 白名單。
-見 [SPEC.md](SPEC.md) 的實作優先順序。
+第三版做了 `watchPosition` / `clearWatch`：固定模式送一次就安靜，抖動模式每秒送
+一組新座標，開關關掉時既有的 watch 交回原生。
+
+**還沒做**：`navigator.permissions.query` 覆寫成 granted、iframe 支援
+（`all_frames`）、per-site 白名單。見 [SPEC.md](SPEC.md) 的實作優先順序。
 
 **已知限制**：頁面自己的 JS 能監聽也能偽造擴充用的 CustomEvent，覆寫也能經
 `Geolocation.prototype` 繞過 —— 在會偵測 location spoofing 的網站上，這個擴充
@@ -52,7 +54,7 @@
 ## 開發
 
 ```bash
-node tools/verify.js        # exit 0 = 十項斷言全過
+node tools/verify.js        # exit 0 = 十一項斷言全過
 ```
 
 需要 playwright 與 Chrome for Testing（**系統的 Chrome stable 不行**，
