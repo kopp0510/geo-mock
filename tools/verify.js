@@ -538,7 +538,7 @@ async function cleanup({ ctx, profile }) {
       // 9) jitter 模式：以設定的座標為中心抖動（SPEC 第二版第 7 項）
       await ext.goto(`chrome-extension://${extId}/options.html`);
       // 等 options.js 那個非同步 get 把欄位回填完再動手。搶在它前面填的話，
-      // 回填會把值蓋回舊的 —— 第 5、6 項撞到這個會紅燈（座標對不上），
+      // 回填會把值蓋回舊的 —— 第 7、8 項撞到這個會紅燈（座標對不上），
       // 但這一項只會**靜默變弱**：半徑被蓋回 50，斷言仍在驗 max <= 100，恆真。
       await ext.waitForFunction(() => document.getElementById('jitterRadius').value !== '');
       await ext.fill('#jitterRadius', String(JITTER_RADIUS));
@@ -595,9 +595,10 @@ async function cleanup({ ctx, profile }) {
         && jitter.max <= JITTER_RADIUS && jitter.max > JITTER_RADIUS / 2
         && jitter.distinct >= 2]);
 
-      // 改回 fixed，下一項才是在測「開關關掉」而不是順便測到模式。
-      // 要等 callback —— 不等的話這個寫入可能在下一行導航時掉了，
-      // 註解宣稱的事就沒真的成立（第 8 項看的是 console 痕跡，不會因此變紅）。
+      // 改回 fixed。第 13 項才是在測「開關關掉」，別讓它順便測到模式 ——
+      // 中間還隔著第 10～12 項，所以這裡不是「下一項」。
+      // 要等 callback：不等的話這個寫入可能在下一行導航時掉了，註解宣稱的事
+      // 就沒真的成立（第 13 項看的是 console 痕跡，不會因此變紅）。
       await ext.evaluate(() => new Promise(r => chrome.storage.local.set({ mode: 'fixed' }, r)));
 
       // 10) 推送的內容不含已存地點。
@@ -718,7 +719,7 @@ async function cleanup({ ctx, profile }) {
       results.push(['排除清單上的網站走真實定位，拿掉後恢復',
         !!whenExcluded.error && sameCoords(whenBack, LIVE)]);
 
-      // 13) Popup 開關關掉 → 不再覆寫。第 2～11 項全在測「開啟」狀態，
+      // 13) Popup 開關關掉 → 不再覆寫。第 2～12 項全在測「開啟」狀態，
       //    enabled: false 這條路徑到這裡才第一次被驗到。
       await ext.goto(`chrome-extension://${extId}/popup.html`);
       // 開關的 CSS transition 是 .15s。不等它跑完就截圖，拍到的是過渡中間狀態 ——

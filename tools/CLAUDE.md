@@ -64,10 +64,10 @@ node tools/verify.js        # exit 0 = 全部通過
    lat/lng/accuracy 都驗；順帶截圖到 `.screenshots/options.png`）
 8. **改設定不重整分頁也生效**（options 存第二組座標 → **不** `page.goto` →
    輪詢到測試頁吃到新值）。這一項唯一在測的就是「沒有重整」這件事，所以那行
-   `page.goto` 千萬別為了穩定性補回去，補了就變成第 5 項的重複 —— 斷言裡種了
+   `page.goto` 千萬別為了穩定性補回去，補了就變成第 7 項的重複 —— 斷言裡種了
    一個 per-document 哨兵盯著這件事，補了 `page.goto` 會立刻紅，不會默默失去意義。
    **注意這一項只驗座標路徑**：「切換開關也即時生效」目前只有手動驗證涵蓋
-   （第 12 項雖然測開關，但它刻意重新載入頁面，靠 `announced` 重置取得乾淨訊號）
+   （第 13 項雖然測開關，但它刻意重新載入頁面，靠 `announced` 重置取得乾淨訊號）
 9. **jitter 模式在設定座標周圍抖動**（options 存半徑 → popup 切到抖動 →
    **同樣不重整**測試頁 → 連取 8 個樣本）。三件事一起驗：真的抖了、沒抖出半徑、
    每次都不一樣 —— 少了最後一項，「只在切換模式時抖一次然後固定住」也會綠燈。
@@ -88,7 +88,7 @@ node tools/verify.js        # exit 0 = 全部通過
     的話，一個永遠回真實定位的迴歸也會綠燈；只驗「拿掉後恢復」則根本沒測到排除本身
 13. 關掉開關後不再覆寫（經 popup 取消勾選 → 重新載入測試頁）。**等的是
     `#state` 的 `data-state` 屬性，不是顯示文字** —— 介面有中英兩種語系，
-    比對文字換個語言就斷；只看 class 也不行，`fail()` 同樣會設成 `state off`。第 2～11 項全在測
+    比對文字換個語言就斷；只看 class 也不行，`fail()` 同樣會設成 `state off`。第 2～12 項全在測
    「開啟」狀態，`enabled: false` 這條路徑只有這一項驗得到。斷言看的是
    `inject.js` 有沒有印出覆寫痕跡，不是比對座標數值 —— 只比座標的話，
    「停用分支誤送預設值」這種迴歸會綠燈放行
@@ -99,11 +99,11 @@ node tools/verify.js        # exit 0 = 全部通過
 別人捐的伺服器。搜尋功能只做手動驗證（見下方「手動測試」）；能靜態比對的部分
 （第 1 項）才進斷言。
 
-第 6～11 項需要 extension id，靠讀 `chrome://extensions` 的 shadow DOM 取得
+第 6～13 項需要 extension id，靠讀 `chrome://extensions` 的 shadow DOM 取得
 （早期這個擴充沒有 service worker，shadow DOM 是唯一路徑。現在有 `background.js` 了，
 理論上可以改用 playwright 的 `context.serviceWorkers()` 拿 id —— 但目前這條還能用，
 沒有動它的理由；哪天 Chrome 改版把它弄斷，那是第一個該試的替代方案）。**這條路徑綁死 Chrome 內部 UI
-的自訂元素名稱，Chrome 改版重構就會斷** —— 斷掉時的症狀是第 4 項拋例外，
+的自訂元素名稱，Chrome 改版重構就會斷** —— 斷掉時的症狀是第 6 項拋例外，
 不會誤判成 PASS。
 
 `makeNoBridgeVariant()` 用**白名單**組變體 manifest，不是「複製全部再刪掉不要的」。
