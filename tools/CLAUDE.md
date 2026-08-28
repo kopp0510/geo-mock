@@ -8,7 +8,7 @@ manifest.json 沒有引用它們，Chrome 也不會載入。
 | 檔案 | 用途 |
 |---|---|
 | `verify.js` | 開真實瀏覽器載入未封裝擴充，斷言定位覆寫確實生效。6 步開發迴圈步驟 1、5 的驗證入口 |
-| `fixtures/test.html` | 測試頁。在 `<head>` 最頂端就呼叫 `getCurrentPosition`，刻意打中「設定未到就先要定位」那條路徑 |
+| `fixtures/test.html` | 測試頁。在 `<head>` 最頂端就呼叫 `getCurrentPosition`，刻意打中「設定未到就先要定位」那條路徑；同時也有給人看的介面（見下方「手動測試」）|
 
 ## 跑法
 
@@ -38,6 +38,22 @@ node tools/verify.js        # exit 0 = 全部通過
 變體目錄只放 `inject.js`，任何指向其他檔案的欄位（`icons`、`options_ui`、
 `action.default_popup`）都會讓 Chrome 整個拒絕載入該擴充並彈錯誤視窗。
 新增這類 manifest 欄位時**不需要**動這裡，這正是用白名單的原因。
+
+## 手動測試
+
+想自己開瀏覽器確認覆寫有沒有生效，用同一個測試頁：
+
+```bash
+python3 -m http.server 8000 -d tools/fixtures
+# 然後開 http://localhost:8000/test.html
+```
+
+**這頁只呼叫 `navigator.geolocation`，完全不查 IP** —— 所以顯示什麼座標，
+就是瀏覽器實際回報給網站的座標，不會有「到底是覆寫生效還是它在猜 IP」的歧義。
+公開的定位測試站多半混用 IP fallback，測出來無法歸因，不建議拿來驗這個擴充。
+
+必須用 `http://localhost`，不能用 `file://` —— content script 對 file:// 需要
+在 `chrome://extensions` 另外開「允許存取檔案網址」。
 
 ## 前提與陷阱
 

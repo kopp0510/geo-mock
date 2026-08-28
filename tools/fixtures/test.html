@@ -1,8 +1,13 @@
-<!doctype html><meta charset="utf-8"><title>geo-mock 驗證頁</title>
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>geo-mock 測試頁</title>
 <script>
-// 在 <head> 最頂端立刻呼叫 —— 模擬「頁面比 chrome.storage 非同步讀取更早要定位」。
-// inject.js 是 document_start，覆寫一定已就位；但 bridge.js 的設定此刻多半還沒送到，
-// 走的正是 pending 佇列那條路（CLAUDE.md 陷阱 1）。
+// ── 這段必須留在 <head> 最頂端 ──────────────────────────────
+// 模擬「頁面比 chrome.storage 非同步讀取更早要定位」。inject.js 是 document_start，
+// 覆寫一定已就位；但 bridge.js 的設定此刻多半還沒送到，走的正是 pending 佇列
+// 那條路（CLAUDE.md 陷阱 1）。tools/verify.js 的第 2 項斷言讀的就是 window.__early。
 window.__early = null; window.__earlyErr = null;
 const t0 = Date.now();
 navigator.geolocation.getCurrentPosition(
@@ -11,4 +16,65 @@ navigator.geolocation.getCurrentPosition(
   e => { window.__earlyErr = 'code=' + e.code + ' ' + e.message; }
 );
 </script>
-<h1>geo-mock test page</h1>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font: 15px/1.6 -apple-system, "Helvetica Neue", "PingFang TC", sans-serif;
+    max-width: 34rem; margin: 3rem auto; padding: 0 1.5rem;
+  }
+  h1 { font-size: 1.3rem; margin: 0 0 .3rem; }
+  .sub { color: #666; margin: 0 0 1.5rem; }
+  button { padding: .5rem 1.25rem; font: inherit; cursor: pointer;
+           border: 0; border-radius: 4px; background: #2563eb; color: #fff; }
+  pre { padding: .9rem 1rem; border-radius: 6px; background: #8881;
+        overflow-x: auto; margin: 1rem 0 0; }
+  .ok  { color: #157347; font-weight: 600; }
+  .err { color: #c00; font-weight: 600; }
+  footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #8883;
+           color: #666; font-size: .9em; }
+  @media (prefers-color-scheme: dark) { .sub, footer { color: #a8a8a8; } }
+</style>
+</head>
+<body>
+  <h1>geo-mock 測試頁</h1>
+  <p class="sub">這頁只呼叫 <code>navigator.geolocation</code>，<strong>完全不查 IP</strong>。
+     所以顯示什麼座標，就是瀏覽器實際回報給網站的座標。</p>
+
+  <button id="again">重新定位</button>
+  <pre id="out">定位中…</pre>
+
+  <footer>
+    看到設定的座標 = 覆寫生效。看到錯誤或你的真實位置 = 沒生效或開關是關的。<br>
+    切換 popup 開關或改座標之後，要<strong>重新整理這一頁</strong>才會反映
+    —— 設定即時推送尚未實作。
+  </footer>
+
+<script>
+const out = document.getElementById('out');
+
+function show(text, cls) {
+  out.textContent = text;
+  out.className = cls || '';
+}
+
+function locate() {
+  show('定位中…');
+  const t = Date.now();
+  navigator.geolocation.getCurrentPosition(
+    p => show(
+      '緯度      ' + p.coords.latitude + '\n' +
+      '經度      ' + p.coords.longitude + '\n' +
+      'accuracy  ' + p.coords.accuracy + ' m\n' +
+      '耗時      ' + (Date.now() - t) + ' ms\n' +
+      '時間戳    ' + new Date(p.timestamp).toLocaleString(), 'ok'),
+    e => show('定位失敗\ncode=' + e.code + '  ' + e.message +
+              '\n耗時 ' + (Date.now() - t) + ' ms', 'err'),
+    { timeout: 10000 }
+  );
+}
+
+document.getElementById('again').addEventListener('click', locate);
+locate();
+</script>
+</body>
+</html>
