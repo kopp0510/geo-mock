@@ -203,6 +203,49 @@
     serve(success, error, options);
   };
 
+  // ── navigator.permissions.query ──────────────────────────────
+  // SPEC 第三版第 9 項。有些網站先查權限，看到 'prompt' 就乾脆不呼叫定位 API ——
+  // 症狀是「擴充明明開著，網站卻完全不問位置」，而 console 一片乾淨，
+  // 因為 getCurrentPosition 根本沒被呼叫過，覆寫痕跡那行也不會印。
+  //
+  // 只攔 geolocation 這一種；其他權限（notifications、camera…）原樣轉給原生，
+  // 沒有理由連它們一起騙。
+  const permissions = navigator.permissions;
+  if (permissions && typeof permissions.query === 'function') {
+    const nativeQuery = permissions.query.bind(permissions);
+
+    // 這不是真的 PermissionStatus（跟 makePosition 回的不是真的 GeolocationPosition
+    // 同一個取捨，見陷阱 4）。補上 EventTarget 那幾個方法是因為網站常寫
+    // status.addEventListener('change', ...)，少了它會 TypeError。
+    const granted = () => ({
+      name: 'geolocation',
+      state: 'granted',
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      dispatchEvent() { return false; },
+    });
+
+    // 覆寫沒開、或設定始終沒到，就把問題原樣轉回原生 —— 別自作主張回 granted，
+    // 那會讓網站以為拿得到位置，結果 getCurrentPosition 走原生跳出授權對話框。
+    const reply = (descriptor) =>
+      (settings && settings.enabled ? Promise.resolve(granted()) : nativeQuery(descriptor));
+
+    permissions.query = function (descriptor) {
+      if (!descriptor || descriptor.name !== 'geolocation') return nativeQuery(descriptor);
+      if (settings !== null) return reply(descriptor);
+
+      // 設定還沒到。這裡比 getCurrentPosition 好處理：query 本來就回 Promise，
+      // 晚一點 resolve 完全合法，不必像 watchPosition 那樣先發一個 id 出去。
+      return new Promise((resolve) => {
+        const answer = () => resolve(reply(descriptor));
+        pending.push(answer);
+        // 設定永遠不來時的出口。Promise 只認第一次 resolve，重複呼叫無害。
+        setTimeout(answer, SETTINGS_WAIT_MS);
+      });
+    };
+  }
+
   // ── watchPosition / clearWatch ───────────────────────────────
   // 跟 getCurrentPosition 最大的不同：**id 必須同步回傳**（陷阱 2）。呼叫端拿到
   // 之後可能立刻 clearWatch，所以不能像 getCurrentPosition 那樣把整個呼叫排隊等

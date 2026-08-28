@@ -19,7 +19,7 @@ const os = require('os');
 const EXT_DIR = path.resolve(__dirname, '..');
 const FIXTURES = path.join(__dirname, 'fixtures');
 const PORT = Number(process.env.PORT) || 0;
-const EXPECTED_ASSERTIONS = 11;
+const EXPECTED_ASSERTIONS = 13;
 const SHOTS = path.join(EXT_DIR, '.screenshots');
 const MOVED = { lat: 35.6812, lng: 139.7671, accuracy: 55 };   // 東京車站 —— 刻意挑一組非預設值
 const LIVE = { lat: 48.8584, lng: 2.2945, accuracy: 12 };      // 巴黎鐵塔 —— 驗即時推送用的第二組
@@ -398,12 +398,48 @@ async function cleanup({ ctx, profile }) {
       console.log('載入後呼叫          : ' + JSON.stringify(pos));
       results.push(['定位覆寫生效', sameCoords(pos, EXPECT)]);
 
-      // 3) 陷阱 1：頁面在設定送達前搶先呼叫，必須被排隊後補回
+      // 3) iframe 內也要被覆寫（SPEC 第三版第 10 項，manifest 的 all_frames）
+      // iframe 有自己的 JS 環境，沒設 all_frames 的話 content script 不會注入進去，
+      // 而症狀是「主頁面正常、嵌在裡面的地圖顯示真實位置」，很難歸因。
+      const frame = page.frames().find(f => f.url().includes('frame.html'));
+      if (!frame) throw new Error('找不到 iframe —— tools/fixtures/test.html 沒嵌進去？');
+      // 失敗要走 resolve 不要 reject：沒注入進 iframe 時原生會回 error，
+      // reject 的話整個區塊拋例外、後面十項全部沒跑，訊息變成「有測試未跑完」——
+      // 比「iframe 內也被覆寫 FAIL」難歸因得多。
+      const framePos = await frame.evaluate(() => new Promise((res) => {
+        navigator.geolocation.getCurrentPosition(
+          p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+          e => res({ error: e.code }),
+          { timeout: 5000 }
+        );
+      }));
+      console.log('iframe 內呼叫       : ' + JSON.stringify(framePos));
+      results.push(['iframe 內也被覆寫', sameCoords(framePos, EXPECT)]);
+
+      // 4) navigator.permissions.query 回 granted（SPEC 第三版第 9 項）
+      // 有些網站先查權限，看到 'prompt' 就乾脆不呼叫定位 API —— 症狀是
+      // 「擴充開著但網站完全不問位置」，連覆寫痕跡那行都不會印，因為沒被呼叫過。
+      const perm = await page.evaluate(async () => {
+        const geo = await navigator.permissions.query({ name: 'geolocation' });
+        // 別的權限不該被一起騙
+        const camera = await navigator.permissions.query({ name: 'camera' })
+          .then(s => s.state, () => 'unsupported');
+        return {
+          geo: geo.state,
+          listenable: typeof geo.addEventListener === 'function',
+          camera,
+        };
+      });
+      console.log('permissions.query   : ' + JSON.stringify(perm));
+      results.push(['permissions.query 對 geolocation 回 granted，其他權限不動',
+        perm.geo === 'granted' && perm.listenable && perm.camera !== 'granted']);
+
+      // 5) 陷阱 1：頁面在設定送達前搶先呼叫，必須被排隊後補回
       const early = await page.evaluate(() => ({ pos: window.__early, err: window.__earlyErr }));
       console.log('document_start 搶先 : ' + JSON.stringify(early));
       results.push(['設定未達時的請求排隊（陷阱 1）', sameCoords(early.pos, EXPECT)]);
 
-      // 4、5) Options 頁：貼上欄要能拆解，存檔後 content script 要讀到新值
+      // 6、7) Options 頁：貼上欄要能拆解，存檔後 content script 要讀到新值
       const ext = await a.ctx.newPage();
       const ids = await loadedExtensionIds(ext);
       if (!ids.length) {
@@ -416,7 +452,7 @@ async function cleanup({ ctx, profile }) {
 
       await ext.waitForFunction(() => document.getElementById('lat').value !== '');
 
-      // 4) 貼上欄：Google Maps 的「緯度, 經度」一整串要能拆進兩個數字欄
+      // 6) 貼上欄：Google Maps 的「緯度, 經度」一整串要能拆進兩個數字欄
       await ext.fill('#paste', PASTED);
       const split = await ext.evaluate(() => ({
         lat: document.getElementById('lat').value,
@@ -426,7 +462,7 @@ async function cleanup({ ctx, profile }) {
       results.push(['貼上「緯度, 經度」會拆進兩欄',
         split.lat === PASTED_LAT && split.lng === PASTED_LNG]);
 
-      // 5) 存一組非預設座標，重新載入測試頁後要讀到新值
+      // 7) 存一組非預設座標，重新載入測試頁後要讀到新值
       await ext.fill('#lat', String(MOVED.lat));
       await ext.fill('#lng', String(MOVED.lng));
       await ext.fill('#accuracy', String(MOVED.accuracy));
@@ -451,7 +487,7 @@ async function cleanup({ ctx, profile }) {
       results.push(['Options 頁存的座標會生效',
         sameCoords(after, MOVED) && after.acc === MOVED.accuracy]);
 
-      // 6) 即時推送：改完設定不重整分頁也要生效（SPEC 第二版第 6 項）
+      // 8) 即時推送：改完設定不重整分頁也要生效（SPEC 第二版第 6 項）
       //
       // 在測試頁種一個哨兵，最後連它一起斷言。這一項唯一在測的就是「沒有重整」，
       // 而那件事本來只靠註解拜託後人別加 page.goto —— 有人為了修 flake 加回去，
@@ -498,7 +534,7 @@ async function cleanup({ ctx, profile }) {
       results.push(['改設定不重整分頁也生效',
         survived === mark && sameCoords(pushed, LIVE) && pushed.acc === LIVE.accuracy]);
 
-      // 7) jitter 模式：以設定的座標為中心抖動（SPEC 第二版第 7 項）
+      // 9) jitter 模式：以設定的座標為中心抖動（SPEC 第二版第 7 項）
       await ext.goto(`chrome-extension://${extId}/options.html`);
       // 等 options.js 那個非同步 get 把欄位回填完再動手。搶在它前面填的話，
       // 回填會把值蓋回舊的 —— 第 5、6 項撞到這個會紅燈（座標對不上），
@@ -563,7 +599,7 @@ async function cleanup({ ctx, profile }) {
       // 註解宣稱的事就沒真的成立（第 8 項看的是 console 痕跡，不會因此變紅）。
       await ext.evaluate(() => new Promise(r => chrome.storage.local.set({ mode: 'fixed' }, r)));
 
-      // 8) 推送的內容不含已存地點。
+      // 10) 推送的內容不含已存地點。
       //
       // 這個 CustomEvent 頁面自己的 JS 監聽得到（CLAUDE.md「已知限制」），
       // 所以推送內容必須只有 inject.js 真正要用的那幾個鍵。少了 bridge.js 的
@@ -601,7 +637,7 @@ async function cleanup({ ctx, profile }) {
         && pushedKeys.length > 0 && !pushedKeys.includes('places')
         && !leak.includes(SECRET_PLACE.label)]);
 
-      // 9) watchPosition / clearWatch（SPEC 第三版第 8 項）
+      // 11) watchPosition / clearWatch（SPEC 第三版第 8 項）
       //
       // 這裡驗的是三件在 getCurrentPosition 上不會出現的事：id 必須**同步**回傳
       // （陷阱 2）、固定模式送一次就安靜（座標不變，真正的 watchPosition 只在
@@ -646,7 +682,7 @@ async function cleanup({ ctx, profile }) {
       // 改回 fixed，下一項才是在測開關而不是順便測到模式
       await ext.evaluate(() => new Promise(r => chrome.storage.local.set({ mode: 'fixed' }, r)));
 
-      // 10) Popup 開關關掉 → 不再覆寫。第 2～9 項全在測「開啟」狀態，
+      // 12) Popup 開關關掉 → 不再覆寫。第 2～11 項全在測「開啟」狀態，
       //    enabled: false 這條路徑到這裡才第一次被驗到。
       await ext.goto(`chrome-extension://${extId}/popup.html`);
       // 開關的 CSS transition 是 .15s。不等它跑完就截圖，拍到的是過渡中間狀態 ——
@@ -692,7 +728,7 @@ async function cleanup({ ctx, profile }) {
       await cleanup(a);
     }
 
-    // 11) 失敗情境：設定永遠送不到，排隊必須有出口
+    // 13) 失敗情境：設定永遠送不到，排隊必須有出口
     noBridgeDir = makeNoBridgeVariant();
     const b = await launch(chromium, executablePath, noBridgeDir);
     try {

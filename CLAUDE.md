@@ -37,6 +37,9 @@ geo-mock/
 ## 架構約束（已定案，不重新討論）
 
 - 覆寫對象是 `navigator.geolocation`，必須跑在頁面自己的 JS 環境
+- **兩個 content script 都要 `all_frames: true`**：iframe 有自己的 JS 環境，
+  漏了其中一個的症狀是「主頁面正常、嵌在裡面的地圖顯示真實位置」，很難歸因。
+  `tools/verify.js` 第 3 項守著（測試頁嵌了 `fixtures/frame.html`）
 - **雙 content script 不可合併**：MAIN world 拿不到 `chrome.storage`，所以由
   ISOLATED world 的 `bridge.js` 讀設定、用 CustomEvent 推給 MAIN world 的 `inject.js`
 - **跨 world 的事件帶遞增序號**：`{ seq, settings }`，`inject.js` 只接受嚴格大於

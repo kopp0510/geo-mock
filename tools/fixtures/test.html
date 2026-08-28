@@ -41,6 +41,11 @@ navigator.geolocation.getCurrentPosition(
      所以顯示什麼座標，就是瀏覽器實際回報給網站的座標。</p>
 
   <button id="again">重新定位</button>
+
+  <!-- all_frames 的驗證對象。iframe 裡的頁面有自己的 JS 環境，
+       content script 沒設 all_frames 的話它不會被注入。 -->
+  <iframe id="frame" src="frame.html" title="iframe 測試"
+          style="width: 100%; height: 5.5rem; border: 1px solid #ccc; margin-top: .8rem"></iframe>
   <pre id="out">定位中…</pre>
 
   <footer>

@@ -140,6 +140,10 @@ Chrome 根本不替擴充頁的 fetch 送這個 header。等於兩條識別路�
 
 **第三版（撞到再做）**
 8. `watchPosition` / `clearWatch` —— **已做**，行為見上方「watchPosition」
-9. `navigator.permissions.query` 覆寫成 granted
-10. `all_frames: true` 支援 iframe
+9. `navigator.permissions.query` 覆寫成 granted —— **已做**。只攔 geolocation
+   這一種，其他權限（notifications、camera…）原樣轉給原生。覆寫沒開、或設定
+   始終沒到時也原樣轉回原生 —— 不能自作主張回 granted，那會讓網站以為拿得到
+   位置，結果 `getCurrentPosition` 走原生跳出授權對話框
+10. `all_frames: true` 支援 iframe —— **已做**，兩個 content script 都要加。
+    沒加的症狀是「主頁面正常、嵌在裡面的地圖顯示真實位置」
 11. per-site 白名單
