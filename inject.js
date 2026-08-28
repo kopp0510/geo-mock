@@ -18,6 +18,10 @@
 
   const nativeGetCurrentPosition = geo.getCurrentPosition.bind(geo);
 
+  // 「不介入，走真實定位」的終端內容。settings 只會被整份替換、不會被就地改動，
+  // 所以兩個退回點共用同一個物件（命名與 bridge.js 的 DISABLED 對齊）。
+  const DISABLED = { enabled: false };
+
   let settings = null;   // null 代表設定還沒送到，不是「沒有設定」
   let announced = false;
   let lastSeq = -1;      // 收過的最大序號；bridge.js 的 seq 從 1 開始
@@ -30,18 +34,30 @@
     }
   }
 
-  document.addEventListener(EVT_SETTINGS, (e) => {
-    let msg = null;
-    try { msg = JSON.parse(e.detail); } catch (err) { /* 下面統一處理 */ }
+  // 只認得 bridge.js 的 { seq, settings }。不是 JSON、或欄位不齊（頁面自己亂送的
+  // 事件也會走到這裡），一律回 null 交給呼叫端統一處理 —— 兩種壞法沒有分別。
+  function parseMessage(detail) {
+    try {
+      const msg = JSON.parse(detail);
+      // Number.isInteger 而不是 typeof === 'number'：NaN 也是 number，而
+    // NaN <= lastSeq 恆為 false —— 一則 {seq: NaN} 會被收下並讓 lastSeq 永久變成
+    // NaN，之後每則訊息都通過，亂序保護整個失效。
+    if (msg && Number.isInteger(msg.seq) && msg.settings) return msg;
+    } catch (err) { /* 不是 JSON，跟欄位不齊同一種處理 */ }
+    return null;
+  }
 
-    if (!msg || typeof msg.seq !== 'number' || !msg.settings) {
+  document.addEventListener(EVT_SETTINGS, (e) => {
+    const msg = parseMessage(e.detail);
+
+    if (!msg) {
       // 收到看不懂的東西。分兩種情況，因為「還沒有設定」與「已經在覆寫」
       // 對同一則壞訊息該有不同反應：
       //   還沒有 → 當成不介入並把隊列放掉，否則排隊的請求會一路等到逾時
       //   已經有 → 直接丟掉這則。一則壞訊息不該把運作中的覆寫關掉
       // 兩種情況都不動 lastSeq。
       if (settings === null) {
-        settings = { enabled: false };
+        settings = DISABLED;
         flush();
       }
       return;
@@ -109,7 +125,7 @@
       // 才收到 error code=3）。選擇忍受這點，是因為 enabled=false 的語義本來就是
       // 「走真實定位」，直接丟 error 會連真實定位也放棄；而這是極端路徑，
       // 正常情況設定 20ms 內就到，根本走不到這裡。
-      if (settings === null) settings = { enabled: false };
+      if (settings === null) settings = DISABLED;
       serve(success, error, options);
     }, waitMs);
 

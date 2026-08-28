@@ -133,6 +133,18 @@ geo-mock/
 - **設定送不到時最壞花掉呼叫端 timeout 的兩倍**：見 `inject.js` 逾時分支的註解。
   極端路徑，正常情況設定 20ms 內就到。有了即時推送之後這不再是終端狀態 ——
   設定晚到會帶著更大的序號把它接回去。
+- **重新載入擴充之後，開著的分頁要重整一次才恢復即時推送**。Chrome 不會把
+  content script 重新注入既有分頁，而是把舊的孤兒化（「Extension context
+  invalidated」的由來），孤兒 `bridge.js` 收不到 `storage.onChanged`。
+  **這正好是本專案開發迴圈步驟 5 的預設路徑**（重新載入擴充 → 回到開著的測試頁
+  → 改設定 → 沒反應），第一次撞到很容易誤判成即時推送壞了。`bridge.js` 的
+  `onChanged` callback 有自己的 try/catch，這種情況會在該分頁的 console 印一行。
+- **`seq` 是在「送出時」取號，不是「讀取時」**（`bridge.js`）。兩次快速寫入會發出
+  兩次非同步 `get`，callback 若亂序回來，後到的那個會拿到較大的序號卻帶著較舊的
+  快照，inject 就停在舊設定直到下次變更才自癒。Chrome 的 storage callback 實務上
+  是循序的，所以這是理論風險；真要修得把 `cached` 與它的序號綁在一起走，
+  光是「先取號再讀」不夠 —— 陳舊的讀取仍會覆寫 `cached`，之後 READY 補送就會
+  廣播那份陳舊快照。
 - **「查詢結果沒進快取就重送」仍有兩個窄窗口**，刻意不處理。日常那條路徑
   （搜尋途中點掉 popup）已經在把查詢搬進 service worker 時修好了，剩下的是：
   SW 在 fetch 途中被**強制**終止（`chrome://extensions` 按重新載入、擴充更新、

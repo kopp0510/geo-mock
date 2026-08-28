@@ -34,10 +34,10 @@
 ## 目前做到哪
 
 第一版（固定座標覆寫）已可用：`getCurrentPosition` 覆寫、options 頁存座標、popup 開關。
-第二版做了地址搜尋 + 候選清單 + 快取。
+第二版做了地址搜尋 + 候選清單 + 快取、設定即時推送。
 
-**還沒做**：已存地點、jitter 抖動模式、設定即時推送、`watchPosition`、
-iframe 支援。見 [SPEC.md](SPEC.md) 的實作優先順序。
+**還沒做**：已存地點、jitter 抖動模式、`watchPosition`、iframe 支援。
+見 [SPEC.md](SPEC.md) 的實作優先順序。
 
 **已知限制**：頁面自己的 JS 能監聽也能偽造擴充用的 CustomEvent，覆寫也能經
 `Geolocation.prototype` 繞過 —— 在會偵測 location spoofing 的網站上，這個擴充

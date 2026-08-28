@@ -258,7 +258,7 @@ async function cleanup({ ctx, profile }) {
   let noBridgeDir = '';
 
   try {
-    // ── 靜態檢查：不開瀏覽器、不送請求 ──────────────────────
+    // 1) 靜態檢查：不開瀏覽器、不送請求
     const setupProblem = checkPolicySetup();
     console.log('政策相關設定        : ' + (setupProblem || '完整'));
     results.push(['Nominatim 政策相關設定沒有壞掉（靜態）', setupProblem === null]);
@@ -269,7 +269,7 @@ async function cleanup({ ctx, profile }) {
       const page = await a.ctx.newPage();
       await page.goto(url);
 
-      // 1) 頁面載入後才要定位，此時設定早已送達
+      // 2) 頁面載入後才要定位，此時設定早已送達
       const pos = await page.evaluate(() => new Promise((res, rej) => {
         navigator.geolocation.getCurrentPosition(
           p => res({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }),
@@ -280,12 +280,12 @@ async function cleanup({ ctx, profile }) {
       console.log('載入後呼叫          : ' + JSON.stringify(pos));
       results.push(['定位覆寫生效', sameCoords(pos, EXPECT)]);
 
-      // 2) 陷阱 1：頁面在設定送達前搶先呼叫，必須被排隊後補回
+      // 3) 陷阱 1：頁面在設定送達前搶先呼叫，必須被排隊後補回
       const early = await page.evaluate(() => ({ pos: window.__early, err: window.__earlyErr }));
       console.log('document_start 搶先 : ' + JSON.stringify(early));
       results.push(['設定未達時的請求排隊（陷阱 1）', sameCoords(early.pos, EXPECT)]);
 
-      // 3) Options 頁：改存一組非預設座標，content script 必須讀到新值
+      // 4、5) Options 頁：貼上欄要能拆解，存檔後 content script 要讀到新值
       const ext = await a.ctx.newPage();
       const ids = await loadedExtensionIds(ext);
       if (!ids.length) {
@@ -296,7 +296,7 @@ async function cleanup({ ctx, profile }) {
 
       await ext.goto(`chrome-extension://${extId}/options.html`);
 
-      // 3a) 貼上欄：Google Maps 的「緯度, 經度」一整串要能拆進兩個數字欄
+      // 4) 貼上欄：Google Maps 的「緯度, 經度」一整串要能拆進兩個數字欄
       await ext.fill('#paste', PASTED);
       const split = await ext.evaluate(() => ({
         lat: document.getElementById('lat').value,
@@ -306,9 +306,13 @@ async function cleanup({ ctx, profile }) {
       results.push(['貼上「緯度, 經度」會拆進兩欄',
         split.lat === PASTED_LAT && split.lng === PASTED_LNG]);
 
+      // 5) 存一組非預設座標，重新載入測試頁後要讀到新值
       await ext.fill('#lat', String(MOVED.lat));
       await ext.fill('#lng', String(MOVED.lng));
       await ext.fill('#accuracy', String(MOVED.accuracy));
+      // 先把 status 清掉再送出。不清的話它早在上面貼上欄那步就已經是 'ok'，
+      // 下面那個等待會立刻通過，根本沒等到 storage 真的寫完。
+      await ext.evaluate(() => { document.getElementById('status').className = ''; });
       await ext.click('button[type=submit]');
       await ext.waitForFunction(() => document.getElementById('status').className === 'ok');
       fs.mkdirSync(SHOTS, { recursive: true });
@@ -328,6 +332,15 @@ async function cleanup({ ctx, profile }) {
         sameCoords(after, MOVED) && after.acc === MOVED.accuracy]);
 
       // 6) 即時推送：改完設定不重整分頁也要生效（SPEC 第二版第 6 項）
+      //
+      // 在測試頁種一個哨兵，最後連它一起斷言。這一項唯一在測的就是「沒有重整」，
+      // 而那件事本來只靠註解拜託後人別加 page.goto —— 有人為了修 flake 加回去，
+      // 這項會繼續綠燈同時完全停止測試它宣稱要測的東西。哨兵讓那個提醒變成檢查。
+      const mark = await page.evaluate(() => {
+        window.__noReload = Math.random();
+        return window.__noReload;
+      });
+
       await ext.goto(`chrome-extension://${extId}/options.html`);
       await ext.fill('#lat', String(LIVE.lat));
       await ext.fill('#lng', String(LIVE.lng));
@@ -338,26 +351,34 @@ async function cleanup({ ctx, profile }) {
       // 刻意不 page.goto —— 測試頁維持上一次載入的狀態。重整過就測不到
       // 「不重整也生效」這件事了，那正是這一項唯一在測的東西。
       const pushed = await page.evaluate(async (want) => {
+        const ASK_TIMEOUT_MS = 3000;    // 單次 getCurrentPosition 的上限
+        const DEADLINE_MS = 3000;       // 整段輪詢的上限（與上面同值但意義不同，別合併）
+        const POLL_MS = 50;
         const ask = () => new Promise(res => navigator.geolocation.getCurrentPosition(
           p => res({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }),
           () => res(null),
-          { timeout: 3000 }
+          { timeout: ASK_TIMEOUT_MS }
         ));
         // 推送是非同步的（storage.onChanged → bridge → CustomEvent → inject），
         // 輪詢到拿到新值為止，逾時就把最後一次的結果交出去讓斷言判定。
         const t0 = Date.now();
-        for (;;) {
-          const p = await ask();
-          if (p && Math.abs(p.lat - want.lat) < 1e-6) return { ...p, ms: Date.now() - t0 };
-          if (Date.now() - t0 > 3000) return p;
-          await new Promise(r => setTimeout(r, 50));
+        let last = null;
+        // deadline 檢查放在迴圈開頭：放在 ask() 之後的話，最後一次 ask 還能再花
+        // ASK_TIMEOUT_MS，實際上限會變成兩者相加。
+        while (Date.now() - t0 <= DEADLINE_MS) {
+          last = await ask();
+          if (last && Math.abs(last.lat - want.lat) < 1e-6) return { ...last, ms: Date.now() - t0 };
+          await new Promise(r => setTimeout(r, POLL_MS));
         }
+        return last;   // 逾時就把最後一次的結果交出去讓斷言判定
       }, LIVE);
-      console.log('改設定後（未重整）  : ' + JSON.stringify(pushed));
+      const survived = await page.evaluate(() => window.__noReload);
+      console.log('改設定後（未重整）  : ' + JSON.stringify(pushed)
+        + (survived === mark ? '' : '  ← 分頁被重整過，這項已失去意義'));
       results.push(['改設定不重整分頁也生效',
-        sameCoords(pushed, LIVE) && pushed.acc === LIVE.accuracy]);
+        survived === mark && sameCoords(pushed, LIVE) && pushed.acc === LIVE.accuracy]);
 
-      // 7) Popup 開關關掉 → 不再覆寫。前五項全在測「開啟」狀態，
+      // 7) Popup 開關關掉 → 不再覆寫。第 2～6 項全在測「開啟」狀態，
       //    enabled: false 這條路徑到這裡才第一次被驗到。
       await ext.goto(`chrome-extension://${extId}/popup.html`);
       // 開關的 CSS transition 是 .15s。不等它跑完就截圖，拍到的是過渡中間狀態 ——
@@ -400,7 +421,7 @@ async function cleanup({ ctx, profile }) {
       await cleanup(a);
     }
 
-    // ── 失敗情境：設定永遠送不到，排隊必須有出口 ──────────────
+    // 8) 失敗情境：設定永遠送不到，排隊必須有出口
     noBridgeDir = makeNoBridgeVariant();
     const b = await launch(chromium, executablePath, noBridgeDir);
     try {
