@@ -51,13 +51,16 @@ node tools/verify.js        # exit 0 = 全部通過
      還沒回應」的 service worker，而 `gate()` 的時間戳在 fetch 之前就落地了 ——
      把逾時調長到 30 秒以上，就等於把上面那個洞從另一個方向開回來
 2. 定位覆寫生效（載入後呼叫 → 回傳 `defaults.js` 的座標）
-3. **iframe 內也被覆寫**（`all_frames`）。測試頁嵌了 `fixtures/frame.html`，
-   在那個 frame 裡重新呼叫一次定位。**失敗要走 resolve 不要 reject** ——
+3. **iframe 內也被覆寫**（`all_frames` **與** `match_about_blank`）。測試頁嵌了兩個
+   frame：`fixtures/frame.html`（有 src，歸 all_frames 管）與一個 `srcdoc` frame
+   （沒有 src，歸 match_about_blank 管 —— widget 與部分地圖 SDK 就是這樣建的，
+   漏掉的症狀跟漏掉 all_frames 一模一樣）。在兩個 frame 裡各重新呼叫一次定位。**失敗要走 resolve 不要 reject** ——
    沒注入進去時原生會回 error，reject 的話整個區塊拋例外、後面十項全都沒跑，
    訊息變成「有測試未跑完」，比一個明確的 FAIL 難歸因得多
 4. **`permissions.query` 對 geolocation 回 granted**，而且**別的權限不受影響**
    （順帶查一次 camera，它不該變成 granted）。少了後半，「連其他權限一起騙」
-   這種過度覆寫會綠燈放行
+   這種過度覆寫會綠燈放行。另外讀 `window.__earlyPerm` —— 測試頁在 `<head>`
+   最頂端就問過一次，那時設定還沒到，走的是排隊那條路；不看它就只測得到快速路徑
 5. 設定未達時的請求排隊（`document_start` 搶先呼叫 → 被壓住十幾 ms 後正確回應）
 6. 貼上「緯度, 經度」會拆進兩欄（Google Maps 右鍵複製的格式，位數留滿確認不被截斷）
 7. Options 頁存的座標會生效（存一組非預設值 → content script 讀到新值，

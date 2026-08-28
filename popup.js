@@ -133,7 +133,7 @@
         }
         // 這行不能省：relabel() 換語言時要靠 current.enabled 重畫狀態列。
         // 不同步的話「切開關 → 換語言」會讓狀態列跳回切換前的值 ——
-        // 連 data-state 一起寫錯，而 tools/verify.js 第 10 項就靠那個訊號。
+        // 連 data-state 一起寫錯，而 tools/verify.js 第 13 項就靠那個訊號。
         // （current.mode 在 onModeChange 有同步，這裡漏了就是不對稱的來源。）
         current.enabled = on;
         setState(on);
@@ -308,8 +308,8 @@
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'del';
-    del.title = t('deletePlace');
-    del.setAttribute('aria-label', t('deletePlaceLabel', place.label));
+    del.title = t('deleteItem');
+    del.setAttribute('aria-label', t('deleteItemLabel', place.label));
     del.textContent = '×';
     // 比對物件參考而不是 index 或內容：index 在前一次刪除後就位移了，
     // 而同名同座標存兩次仍是兩個不同的物件，刪得掉正確的那個。
@@ -408,11 +408,19 @@
 
   el.excludeSite.addEventListener('click', () => {
     if (!currentHost) return;
-    const next = siteExcluded()
-      // 移除時把所有比對得到這個 host 的規則一起拿掉 —— 只刪字面相同的話，
-      // 被 *.example.com 蓋到的站按了按鈕不會有反應，看起來像壞了
-      ? excludedList().filter((p) => !GEO_MOCK_SITES.matches(p, currentHost))
+
+    // 移除時把所有比對得到這個 host 的規則一起拿掉 —— 只刪字面相同的話，
+    // 被 *.example.com 蓋到的站按了按鈕不會有反應，看起來像壞了。
+    // 但那可能連帶刪掉一條涵蓋很多站的規則，所以要講出來：
+    // 使用者在 wiki.corp.example.com 上按一下，*.corp.example.com 整條沒了，
+    // 另外十九個服務同時失去排除，畫面上卻只有按鈕文字換了一個字。
+    const removed = siteExcluded()
+      ? excludedList().filter((p) => GEO_MOCK_SITES.matches(p, currentHost))
+      : [];
+    const next = removed.length
+      ? excludedList().filter((p) => !removed.includes(p))
       : [...excludedList(), currentHost];
+
     try {
       chrome.storage.local.set({ excludedSites: next }, () => {
         if (chrome.runtime.lastError) {
@@ -422,6 +430,10 @@
         current.excludedSites = next;
         renderSite();
         setState(!!current.enabled);
+        // 剛好只刪掉字面相同的那一條時不必囉嗦；其餘情況要說清楚刪了什麼
+        const surprising = removed.filter((p) => p !== currentHost);
+        if (surprising.length) say(t('rulesRemoved', removed.length, removed.join('、')));
+        else say('');
       });
     } catch (err) {
       console.error('[geo-mock] popup 更新排除清單失敗:', err);
@@ -437,7 +449,7 @@
     renderSite();
     // apply() 會把 #state 寫成「讀取中…」（它帶著 data-i18n），所以 setState 一定
     // 要緊接在後面同步跑，中間不能插 await —— 插了就會停在讀取中，而 data-state
-    // 說 off，tools/verify.js 第 10 項只看後者，會綠燈放行。
+    // 說 off，tools/verify.js 第 13 項只看後者，會綠燈放行。
     setState(!!current.enabled);
     showMode();
     renderPlaces();

@@ -49,8 +49,8 @@
   開關關掉時既有的 watch 交回原生
 - `navigator.permissions.query` 覆寫成 granted —— 有些網站先查權限，看到 prompt 就
   乾脆不呼叫定位 API，症狀是「擴充開著但網站完全不問位置」
-- iframe 支援（`all_frames`）—— 沒有的話「主頁面正常、嵌在裡面的地圖顯示真實位置」
-
+- iframe 支援（`all_frames` + `match_about_blank`，後者管沒有 src 的 srcdoc frame）
+  —— 沒有的話「主頁面正常、嵌在裡面的地圖顯示真實位置」
 - **排除清單** —— 預設所有網站都生效；把不想被影響的站（網銀、訂票、地圖）
   加進清單，那些站就走真實定位。popup 有一顆「這個網站不要覆寫」的按鈕，
   清單本身在進階設定裡編輯。比對含埠號（`localhost:3000`），也吃 `*.example.com`

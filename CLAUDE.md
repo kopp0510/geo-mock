@@ -58,9 +58,9 @@ geo-mock/
   使用者關心哪些網站的清單，頁面讀得到等於白送一份瀏覽偏好
 - **推送出去的內容只有 `SENT` 那幾個鍵**（`bridge.js` 的 `pick()`），不是整份
   設定。這個事件頁面監聽得到，整份送的話已存地點連同精確座標會被每個網站讀走。
-  `tools/verify.js` 第 8 項守著這條 —— 拿掉過濾功能完全正常，沒有任何症狀
+  `tools/verify.js` 第 10 項守著這條 —— 拿掉過濾功能完全正常，沒有任何症狀
 - manifest 的 `content_scripts` 用 `world` 欄位需要 Chrome 111+
-- **ISOLATED world 是多檔載入，順序有語意依賴**：`["defaults.js", "bridge.js"]`，
+- **ISOLATED world 是多檔載入，順序有語意依賴**：`["defaults.js", "sites.js", "bridge.js"]`，
   `defaults.js` 必須排在前面。順序反了或檔案漏掉，`bridge.js` 會拿不到
   `GEO_MOCK_DEFAULTS`；那條路徑現在會 `console.error` 並退回真實定位，不會靜默失效
 - `manifest.json` 需 `host_permissions: ["https://nominatim.openstreetmap.org/*"]`
@@ -108,7 +108,9 @@ geo-mock/
    設定每次變更都會重跑它，所以它必須能從任何狀態切到任何狀態。
 
 3. **`navigator.permissions.query({name:'geolocation'})`** — 有些網站先查權限，看到
-   prompt 就不呼叫定位了。可能需一併覆寫成 granted。
+   prompt 就不呼叫定位了。**已實作**於 `inject.js`：只攔 geolocation，其他權限
+   原樣轉給原生；覆寫沒開時也轉回原生（回 granted 會讓網站以為拿得到位置，
+   結果原生跳出授權對話框）。
 
 4. **回傳的是普通物件**，不是真的 `GeolocationPosition`。少數網站會檢查 prototype 或
    `instanceof`。第三版再處理。
@@ -152,8 +154,8 @@ geo-mock/
    - 改到 popup / options UI 時截圖，一律存 `.screenshots/`（已 gitignore），
      勿丟專案根目錄
    - 改到 geocoding 時：`curl -A 'geo-mock/1.0' 'https://nominatim.openstreetmap.org/search?format=json&q=<地址>'`
-     驗證 API 實際回應（注意 SPEC.md「未解事項」：fetch 無法設 User-Agent，
-     擴充端能否通過 Nominatim 識別要求尚未確認）
+     驗證 API 實際回應（識別要求已用 declarativeNetRequest 解掉，見 SPEC.md
+     「識別要求怎麼滿足的」；那條「未解事項」已結案）
 
 6. **再 commit**（最終版本）
 
@@ -195,11 +197,25 @@ geo-mock/
   記在這裡是為了讓下一輪 review 不用再挖一次。
 - **jitter 模式下 `watchPosition` 的重送間隔寫死 1 秒**（`JITTER_INTERVAL_MS`），
   沒有做成設定項。要模擬更快或更慢的移動就得改碼。
+- **`all_frames` 的扇出成本與暴露面**：廣告密集的頁面有數十個 frame，每個都會
+  載入四支 content script、各發一次 `storage.get`、各註冊一個 `onChanged`；
+  改一次座標等於 N 次設定重讀加 N 次事件廣播。而且第三方 frame 現在也收得到
+  `geo-mock:settings`（含座標），即使它從沒呼叫過定位 API —— 「頁面能監聽
+  CustomEvent」那條限制的暴露面確實變大了。
+- **排除清單的萬用字元不吃埠號**：`*.example.com` 命中 `sub.example.com`，
+  但**不**命中 `sub.example.com:3000`，要另外寫 `*.example.com:3000`。
+  非萬用字元那條反而是含埠號比對的，兩者不對稱。
+- **Permissions Policy 拒絕的 frame 裡仍回 granted**：`allow=""` 的跨來源 iframe
+  原生會回 `denied`，覆寫直接回 granted 而且 `getCurrentPosition` 也真的給座標。
+  對開發工具來說多半是想要的，但與「覆寫沒開就轉回原生」那條原則不完全一致。
+- **popup 的一鍵排除只有手動走查涵蓋**：`tools/verify.js` 把 popup 當一般分頁開，
+  protocol 是 `chrome-extension:` → 拿不到 host → 那顆按鈕與 `data-state="excluded"`
+  這個第三種值都走不到。要驗得手動開 popup。
 - **預設 `enabled: true`，裝上就對所有網站生效**。task 3 加了 popup 開關之後重新
   檢討過，決定維持開啟：載入未封裝擴充本身就是明確的開發意圖，再要求「裝完還要
   手動打開」對開發工具是多餘的一步。代價是忘了關的話每個網站都在回報設定座標，
   唯一線索是 `inject.js` 首次覆寫時印的那行 `console.info`。
-  若要改成 opt-in，`tools/verify.js` 前四項需先經 popup 打開開關才能跑。
+  若要改成 opt-in，`tools/verify.js` 第 2～12 項需先經 popup 打開開關才能跑。
 
 ## CLAUDE.md 維護
 

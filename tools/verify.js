@@ -413,8 +413,24 @@ async function cleanup({ ctx, profile }) {
           { timeout: 5000 }
         );
       }));
-      console.log('iframe 內呼叫       : ' + JSON.stringify(framePos));
-      results.push(['iframe 內也被覆寫', sameCoords(framePos, EXPECT)]);
+      // srcdoc frame（沒有 src 的那種）歸 match_about_blank 管，all_frames 管不到。
+      // widget 與部分地圖 SDK 就是這樣建 iframe 的，症狀跟漏掉 all_frames 一模一樣。
+      const blankFrame = page.frames().find(f => f !== page.mainFrame()
+        && !f.url().includes('frame.html'));
+      const blankPos = blankFrame
+        ? await blankFrame.evaluate(() => new Promise((res) => {
+          navigator.geolocation.getCurrentPosition(
+            p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+            e => res({ error: e.code }),
+            { timeout: 5000 }
+          );
+        }))
+        : { error: 'no-frame' };
+
+      console.log('iframe 內呼叫       : ' + JSON.stringify(framePos)
+        + '  srcdoc frame: ' + JSON.stringify(blankPos));
+      results.push(['iframe 內也被覆寫（含沒有 src 的 srcdoc frame）',
+        sameCoords(framePos, EXPECT) && sameCoords(blankPos, EXPECT)]);
 
       // 4) navigator.permissions.query 回 granted（SPEC 第三版第 9 項）
       // 有些網站先查權限，看到 'prompt' 就乾脆不呼叫定位 API —— 症狀是
@@ -431,9 +447,14 @@ async function cleanup({ ctx, profile }) {
           camera,
         };
       });
-      console.log('permissions.query   : ' + JSON.stringify(perm));
+      // 頁面在 <head> 最頂端就問過一次 —— 那時設定還沒到，走的是排隊那條路。
+      // 這一項不看它就永遠只測得到快速路徑。
+      const earlyPerm = await page.evaluate(() => window.__earlyPerm);
+      console.log('permissions.query   : ' + JSON.stringify(perm)
+        + '  設定未達時問的: ' + JSON.stringify(earlyPerm));
       results.push(['permissions.query 對 geolocation 回 granted，其他權限不動',
-        perm.geo === 'granted' && perm.listenable && perm.camera !== 'granted']);
+        perm.geo === 'granted' && perm.listenable && perm.camera !== 'granted'
+        && earlyPerm === 'granted']);
 
       // 5) 陷阱 1：頁面在設定送達前搶先呼叫，必須被排隊後補回
       const early = await page.evaluate(() => ({ pos: window.__early, err: window.__earlyErr }));

@@ -24,15 +24,29 @@ var GEO_MOCK_SITES = (() => {
     return (Array.isArray(list) ? list : []).some((pattern) => matches(pattern, host));
   }
 
+  // host 最長 253 個字元，再給埠號一點空間。沒有上限的話 300 字元的垃圾也會被
+  // 原樣寫進 storage.local，而那塊配額跟 geocodeCache 是共用的。
+  const MAX_LENGTH = 300;
+
   // 使用者可能整串網址貼進來（複製網址列的習慣），也可能只打網域。
   // 一律收斂成 host（含埠號）；認不得就回空字串讓呼叫端報錯。
+  //
+  // **萬用字元也要走同一套驗證**：早期版本直接把 `*.` 開頭的原樣收下，結果
+  // `*.example.com/`（多貼一個斜線）會存進一條長得很正常、卻永遠不會命中的
+  // 死規則 —— 使用者去該站測試發現還是被覆寫，唯一能得到的結論是「功能壞了」。
+  // 走 URL() 還順便拿到 IDN → punycode 的轉換（location.host 給的是 punycode）。
   function normalize(input) {
     const raw = String(input || '').trim();
-    if (!raw) return '';
-    // 萬用字元原樣收下 —— 它不是合法網址，URL() 解不開
-    if (raw.startsWith('*.')) return raw.toLowerCase();
+    if (!raw || raw.length > MAX_LENGTH) return '';
+
+    const wildcard = raw.startsWith('*.');
+    const body = wildcard ? raw.slice(2) : raw;
+    if (!body) return '';
+
     try {
-      return new URL(raw.includes('://') ? raw : `http://${raw}`).host.toLowerCase();
+      const { host } = new URL(body.includes('://') ? body : `http://${body}`);
+      if (!host) return '';
+      return wildcard ? `*.${host.toLowerCase()}` : host.toLowerCase();
     } catch {
       return '';
     }

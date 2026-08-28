@@ -70,8 +70,8 @@
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.textContent = '×';
-      remove.title = t('deletePlace');
-      remove.setAttribute('aria-label', t('deletePlaceLabel', site));
+      remove.title = t('deleteItem');
+      remove.setAttribute('aria-label', t('deleteItemLabel', site));
       remove.addEventListener('click', () => saveSites(sites.filter((s) => s !== site)));
 
       const li = document.createElement('li');
@@ -80,7 +80,7 @@
     }));
   }
 
-  function saveSites(next) {
+  function saveSites(next, onSaved) {
     try {
       chrome.storage.local.set({ excludedSites: next }, () => {
         if (chrome.runtime.lastError) {
@@ -88,7 +88,7 @@
           return;
         }
         renderSites(next);
-        say('', '');
+        if (onSaved) onSaved();
       });
     } catch (err) {
       console.error('[geo-mock] options 儲存排除清單失敗:', err);
@@ -100,9 +100,20 @@
     // 使用者可能整串網址貼進來，normalize 會收斂成 host（含埠號）
     const site = GEO_MOCK_SITES.normalize(el.siteInput.value);
     if (!site) { say(t('badSite'), 'err'); el.siteInput.focus(); return; }
-    if (sites.includes(site)) { say(t('siteAlready'), 'err'); el.siteInput.focus(); return; }
-    el.siteInput.value = '';
-    saveSites([...sites, site]);
+    // 用 matches() 而不是 includes()：清單裡已經有 *.example.com 時，
+    // 再加 sub.example.com 是一條沒有作用的冗餘規則。popup 那邊的移除也是用
+    // matches()，兩邊對「重複」的定義要一致。
+    if (sites.some((p) => GEO_MOCK_SITES.matches(p, site))) {
+      say(t('siteAlready'), 'err'); el.siteInput.focus(); return;
+    }
+    // 輸入框留到寫入成功再清 —— 先清的話 storage 失敗時使用者剛打的網址就沒了，
+    // 畫面只剩一句「儲存失敗」。同專案的開關、模式、語言三處都是失敗就扳回。
+    saveSites([...sites, site], () => {
+      el.siteInput.value = '';
+      // 座標欄按儲存會顯示「已儲存」，這裡什麼都不說的話，同一個訊息區
+      // 一種存檔有回饋、另一種沒有，還會把上一句擦掉。
+      say(t('siteAdded'), 'ok');
+    });
   }
 
   el.addSite.addEventListener('click', addSite);

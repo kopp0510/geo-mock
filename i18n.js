@@ -37,8 +37,10 @@ const GEO_MOCK_I18N = (() => {
       placeNameLabel: '地點名稱',
       save: '存',
       cancel: '取消',
-      deletePlace: '刪除',
-      deletePlaceLabel: '刪除 {0}',
+      // 刪除鈕同時服務已存地點與排除清單，所以名字不綁「地點」——
+      // 綁了的話有人把中文改成「刪除地點」，排除清單上就會讀出「刪除地點 example.com」
+      deleteItem: '刪除',
+      deleteItemLabel: '刪除 {0}',
       liveNote: '改完即時生效，不必重新整理。但頁面要再呼叫一次定位才看得到 —— 已經抓過位置的頁面不會自己更新。',
       openOptions: '進階設定',
       languageLabel: '語言',
@@ -55,6 +57,8 @@ const GEO_MOCK_I18N = (() => {
       addSite: '新增',
       badSite: '認不得這個網址，直接填網域就好',
       siteAlready: '這個網站已經在清單上了',
+      siteAdded: '已加入排除清單',
+      rulesRemoved: '已移除 {0} 條規則：{1}',
 
       // popup 的動態訊息
       searching: '搜尋中…',
@@ -124,8 +128,8 @@ const GEO_MOCK_I18N = (() => {
       placeNameLabel: 'Place name',
       save: 'Save',
       cancel: 'Cancel',
-      deletePlace: 'Delete',
-      deletePlaceLabel: 'Delete {0}',
+      deleteItem: 'Delete',
+      deleteItemLabel: 'Delete {0}',
       liveNote: 'Changes apply immediately — no reload needed. But the page only sees them the next time it asks for a location; pages that already cached one will not update on their own.',
       openOptions: 'Advanced settings',
       languageLabel: 'Language',
@@ -141,6 +145,8 @@ const GEO_MOCK_I18N = (() => {
       addSite: 'Add',
       badSite: "Can't read that as an address — just the domain is enough",
       siteAlready: 'That site is already on the list',
+      siteAdded: 'Added to the skip list',
+      rulesRemoved: 'Removed {0} rule(s): {1}',
 
       searching: 'Searching…',
       noResults: 'No matching place found',

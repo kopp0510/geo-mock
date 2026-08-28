@@ -75,12 +75,31 @@
   // 而那條在 GEO_MOCK_DEFAULTS 沒載入時就會跑，那時 SENT 還在 TDZ 裡。
   const pick = (settings) => Object.fromEntries(SENT.map((k) => [k, settings[k]]));
 
-  // 被排除的站送 DISABLED，不是「送出但少幾個欄位」—— inject.js 那邊
-  // enabled:false 的語義本來就是「走真實定位」，一條現成的路徑不必再開一條。
-  // 比對規則在 sites.js，與 popup 共用（手抄兩份的話規則一改就會漂掉）。
-  const effective = (settings) =>
-    (GEO_MOCK_SITES.excluded(settings.excludedSites, location.host)
-      ? DISABLED : pick(settings));
+  // 排除的單位是「網站」不是「frame」。加了 all_frames 之後，被排除的頁面裡
+  // 嵌的第三方 iframe（地圖、風控廠商）host 不在清單上 —— 只比自己的話，
+  // 網銀頁面裡仍有一塊在回報假座標，而使用者完全不會知道：announce() 印在那個
+  // iframe 自己的 console，主 frame 看不到。所以本 frame 或最上層命中都算排除。
+  function topHost() {
+    try {
+      const origins = location.ancestorOrigins;
+      // ancestorOrigins 由內而外，最後一個是最上層文件
+      if (origins && origins.length) return new URL(origins[origins.length - 1]).host;
+    } catch { /* 拿不到就退回自己的 host，至少比完全不比對好 */ }
+    return location.host;
+  }
+
+  // 「不介入」一律送 DISABLED，不管是全域關掉還是這個站被排除。
+  // 兩者送不同形狀的話，頁面數一下鍵的數量就分辨得出「使用者把這個站排除了」——
+  // 那正是 NOT_SENT 想擋的那一個 bit，從側門漏出去就沒意義了。
+  // 順帶修掉一件既有的事：以前全域關掉時照樣把 lat/lng 廣播給每個頁面。
+  // inject.js 在 enabled:false 時本來就不讀那些欄位，少送不影響任何行為。
+  const effective = (settings) => {
+    if (!settings.enabled) return DISABLED;
+    const list = settings.excludedSites;
+    const here = location.host;
+    return (GEO_MOCK_SITES.excluded(list, here) || GEO_MOCK_SITES.excluded(list, topHost()))
+      ? DISABLED : pick(settings);
+  };
 
   try {
     chrome.storage.local.get(GEO_MOCK_DEFAULTS, (settings) => {

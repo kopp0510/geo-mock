@@ -7,7 +7,7 @@
 // ── 這段必須留在 <head> 最頂端 ──────────────────────────────
 // 模擬「頁面比 chrome.storage 非同步讀取更早要定位」。inject.js 是 document_start，
 // 覆寫一定已就位；但 bridge.js 的設定此刻多半還沒送到，走的正是 pending 佇列
-// 那條路（CLAUDE.md 陷阱 1）。tools/verify.js 的第 2 項斷言讀的就是 window.__early。
+// 那條路（CLAUDE.md 陷阱 1）。tools/verify.js 的第 5 項斷言讀的就是 window.__early。
 window.__early = null; window.__earlyErr = null;
 const t0 = Date.now();
 navigator.geolocation.getCurrentPosition(
@@ -15,6 +15,14 @@ navigator.geolocation.getCurrentPosition(
                             ms: Date.now() - t0 }; },
   e => { window.__earlyErr = 'code=' + e.code + ' ' + e.message; }
 );
+
+// permissions.query 也有同一條排隊路徑（設定未到時晚點才 resolve），
+// 但它沒有對應的早期呼叫就永遠測不到 —— 第 4 項斷言在設定早就到齊之後才跑，
+// 走的是快速路徑。這一發補上那個缺口。
+window.__earlyPerm = null;
+navigator.permissions.query({ name: 'geolocation' })
+  .then(s => { window.__earlyPerm = s.state; })
+  .catch(e => { window.__earlyPerm = 'error:' + e.name; });
 </script>
 <style>
   :root { color-scheme: light dark; }
@@ -44,6 +52,18 @@ navigator.geolocation.getCurrentPosition(
 
   <!-- all_frames 的驗證對象。iframe 裡的頁面有自己的 JS 環境，
        content script 沒設 all_frames 的話它不會被注入。 -->
+  <!-- 沒有 src 的 frame：內容用 srcdoc 塞。all_frames 管不到這種，
+       要 match_about_blank 才會被注入（widget 與部分地圖 SDK 就是這樣建 iframe 的）。 -->
+  <iframe id="blankFrame" title="about:blank iframe 測試"
+          style="width: 100%; height: 3.5rem; border: 1px dashed #ccc; margin-top: .5rem"
+          srcdoc="&lt;body style='font:12px sans-serif;margin:.4rem'&gt;srcdoc frame:
+            &lt;span id='o'&gt;定位中…&lt;/span&gt;
+            &lt;script&gt;navigator.geolocation.getCurrentPosition(
+              p =&gt; { window.__blankPos = { lat: p.coords.latitude, lng: p.coords.longitude };
+                     document.getElementById('o').textContent = window.__blankPos.lat; },
+              e =&gt; { document.getElementById('o').textContent = 'error ' + e.code; },
+              { timeout: 5000 });&lt;/script&gt;&lt;/body&gt;"></iframe>
+
   <iframe id="frame" src="frame.html" title="iframe 測試"
           style="width: 100%; height: 5.5rem; border: 1px solid #ccc; margin-top: .8rem"></iframe>
   <pre id="out">定位中…</pre>
