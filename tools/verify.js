@@ -227,6 +227,34 @@ async function cleanup({ ctx, profile }) {
       // 連 accuracy 一起驗，否則它在某一環被吃掉（例如 set 只寫兩個 key）四項仍全綠
       results.push(['Options 頁存的座標會生效',
         sameCoords(after, MOVED) && after.acc === MOVED.accuracy]);
+
+      // 5) Popup 開關關掉 → 不再覆寫。前四項全在測「開啟」狀態，
+      //    enabled: false 這條路徑到這裡才第一次被驗到。
+      await ext.goto(`chrome-extension://${extId}/popup.html`);
+      // 開關的 CSS transition 是 .15s。不等它跑完就截圖，拍到的是過渡中間狀態 ——
+      // 開關看起來還在關閉位，但實際上 checked 已經是 true，截圖會誤導讀的人。
+      const SETTLE = 250;
+      await ext.waitForTimeout(SETTLE);
+      await ext.screenshot({ path: path.join(SHOTS, 'popup-on.png') });
+
+      await ext.uncheck('#enabled');
+      await ext.waitForFunction(() => document.getElementById('state').className === 'state off');
+      await ext.waitForTimeout(SETTLE);
+      await ext.screenshot({ path: path.join(SHOTS, 'popup-off.png') });
+
+      await page.goto(url);
+      const off = await page.evaluate(() => new Promise(res => {
+        navigator.geolocation.getCurrentPosition(
+          p => res({ overridden: true, lat: p.coords.latitude, lng: p.coords.longitude }),
+          e => res({ overridden: false, code: e.code }),
+          { timeout: 3000 }
+        );
+      }));
+      console.log('關掉開關後        : ' + JSON.stringify(off));
+      // 斷言「拿不到我們設的座標」而不是「一定要 error」——
+      // 真實定位在別的環境可能真的成功，那不算失敗。
+      results.push(['關掉開關後不再覆寫',
+        !(off.overridden && sameCoords(off, MOVED))]);
     } finally {
       await cleanup(a);
     }
@@ -273,11 +301,11 @@ async function cleanup({ ctx, profile }) {
   }
 
   console.log('');
-  let allOk = results.length === 4;
+  let allOk = results.length === 5;
   for (const [name, ok] of results) {
     console.log((ok ? '✓ PASS' : '✗ FAIL') + '  ' + name);
     if (!ok) allOk = false;
   }
-  if (results.length < 4) console.log('✗ 有測試未跑完（見上方例外）');
+  if (results.length < 5) console.log('✗ 有測試未跑完（見上方例外）');
   process.exit(allOk ? 0 : 1);
 })();
