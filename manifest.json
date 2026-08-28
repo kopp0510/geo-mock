@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "description": "開發用的定位覆寫工具：讓瀏覽器對任何網站回報指定的 GPS 座標。",
   "minimum_chrome_version": "111",
-  "permissions": ["storage"],
+  "permissions": [
+    "storage"
+  ],
   "icons": {
     "16": "icons/16.png",
     "48": "icons/48.png",
@@ -12,16 +14,29 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["inject.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "inject.js"
+      ],
       "world": "MAIN",
       "run_at": "document_start"
     },
     {
-      "matches": ["<all_urls>"],
-      "js": ["bridge.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "defaults.js",
+        "bridge.js"
+      ],
       "world": "ISOLATED",
       "run_at": "document_start"
     }
-  ]
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
 }

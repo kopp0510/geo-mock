@@ -19,7 +19,9 @@ const os = require('os');
 const EXT_DIR = path.resolve(__dirname, '..');
 const FIXTURES = path.join(__dirname, 'fixtures');
 const PORT = Number(process.env.PORT) || 0;
-const EXPECT = { lat: 25.0330, lng: 121.5654 };   // 對應 bridge.js 的 DEFAULTS
+const SHOTS = path.join(EXT_DIR, '.screenshots');
+const MOVED = { lat: 35.6812, lng: 139.7671 };   // 東京車站 —— 刻意挑一組非預設值
+const EXPECT = require(path.join(EXT_DIR, 'defaults.js'));   // 與擴充共用同一份預設值
 
 function fail(msg) {
   console.error('\n✗ ' + msg + '\n');
@@ -163,6 +165,37 @@ async function cleanup({ ctx, profile }) {
       results.push(['設定未達時的請求排隊（陷阱 1）', !!early.pos
         && Math.abs(early.pos.lat - EXPECT.lat) < 1e-6
         && Math.abs(early.pos.lng - EXPECT.lng) < 1e-6]);
+
+      // 3) Options 頁：改存一組非預設座標，content script 必須讀到新值
+      const ext = await a.ctx.newPage();
+      await ext.goto('chrome://extensions');
+      // 這個擴充沒有 service worker，拿 extension id 最現成的路徑就是這裡的 shadow DOM
+      const extId = await ext.evaluate(() => {
+        const mgr = document.querySelector('extensions-manager');
+        const list = mgr && mgr.shadowRoot && mgr.shadowRoot.querySelector('extensions-item-list');
+        const item = list && list.shadowRoot && list.shadowRoot.querySelector('extensions-item');
+        return item ? item.id : null;
+      });
+      if (!extId) throw new Error('讀不到 extension id，擴充可能沒載入');
+
+      await ext.goto(`chrome-extension://${extId}/options.html`);
+      await ext.fill('#lat', String(MOVED.lat));
+      await ext.fill('#lng', String(MOVED.lng));
+      await ext.click('button[type=submit]');
+      await ext.waitForFunction(() => document.getElementById('status').className === 'ok');
+      fs.mkdirSync(SHOTS, { recursive: true });
+      await ext.screenshot({ path: path.join(SHOTS, 'options.png') });
+
+      const after = await page.goto(url).then(() => page.evaluate(() => new Promise((res, rej) => {
+        navigator.geolocation.getCurrentPosition(
+          p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+          e => rej(new Error('geolocation error code=' + e.code)),
+          { timeout: 5000 }
+        );
+      })));
+      console.log('Options 存檔後      : ' + JSON.stringify(after));
+      results.push(['Options 頁存的座標會生效', Math.abs(after.lat - MOVED.lat) < 1e-6
+        && Math.abs(after.lng - MOVED.lng) < 1e-6]);
     } finally {
       await cleanup(a);
     }
@@ -198,11 +231,11 @@ async function cleanup({ ctx, profile }) {
   }
 
   console.log('');
-  let allOk = results.length === 3;
+  let allOk = results.length === 4;
   for (const [name, ok] of results) {
     console.log((ok ? '✓ PASS' : '✗ FAIL') + '  ' + name);
     if (!ok) allOk = false;
   }
-  if (results.length < 3) console.log('✗ 有測試未跑完（見上方例外）');
+  if (results.length < 4) console.log('✗ 有測試未跑完（見上方例外）');
   process.exit(allOk ? 0 : 1);
 })();
