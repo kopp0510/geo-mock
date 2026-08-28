@@ -27,6 +27,11 @@
   #status.ok { color: #157347; }
   #status.err { color: #c00; }
   footer { margin-top: 2rem; color: #666; font-size: .9em; }
+
+  /* #666 在深色底上約 3:1，低於一般文字的 4.5:1。popup.html 同樣處理。 */
+  @media (prefers-color-scheme: dark) {
+    .sub, .hint, footer { color: #a8a8a8; }
+  }
 </style>
 </head>
 <body>

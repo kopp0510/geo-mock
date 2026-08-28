@@ -19,6 +19,7 @@ const os = require('os');
 const EXT_DIR = path.resolve(__dirname, '..');
 const FIXTURES = path.join(__dirname, 'fixtures');
 const PORT = Number(process.env.PORT) || 0;
+const EXPECTED_ASSERTIONS = 5;
 const SHOTS = path.join(EXT_DIR, '.screenshots');
 const MOVED = { lat: 35.6812, lng: 139.7671, accuracy: 55 };   // 東京車站 —— 刻意挑一組非預設值
 const EXPECT = require(path.join(EXT_DIR, 'defaults.js'));   // 與擴充共用同一份預設值
@@ -115,7 +116,7 @@ function makeNoBridgeVariant() {
   const mf = JSON.parse(fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf8'));
 
   // 白名單，不是「複製整份再刪掉不要的」。變體目錄只放 inject.js，
-  // 任何指向其他檔案的欄位（icons、options_ui、之後的 action.default_popup）
+  // 任何指向其他檔案的欄位（icons、options_ui、action.default_popup）
   // 都會讓 Chrome 在載入時彈「無法載入擴充功能」的錯誤視窗。
   // 黑名單寫法每次 manifest 加新欄位都會再犯一次，所以這裡只列出變體真正需要的。
   const variant = {
@@ -238,10 +239,19 @@ async function cleanup({ ctx, profile }) {
       await ext.screenshot({ path: path.join(SHOTS, 'popup-on.png') });
 
       await ext.uncheck('#enabled');
-      await ext.waitForFunction(() => document.getElementById('state').className === 'state off');
+      // 比對文字而非 class：popup.js 的 fail() 也會把 class 設成 'state off'，
+      // 只看 class 的話「存檔成功」與「存檔失敗」都會讓這個等待通過。
+      await ext.waitForFunction(
+        () => document.getElementById('state').textContent === '未覆寫，走真實定位');
       await ext.waitForTimeout(SETTLE);
       await ext.screenshot({ path: path.join(SHOTS, 'popup-off.png') });
 
+      // inject.js 只在「真的覆寫了」時印這行，而 announced 每次頁面載入都重置，
+      // 所以 reload 後這行的有無是乾淨訊號。比對座標數值會漏掉一種迴歸：
+      // 停用分支誤送 GEO_MOCK_DEFAULTS（enabled:true、台北 101）——
+      // 那時 overridden 是 true 但座標不是 MOVED，只比 MOVED 會綠燈放行。
+      const logs = [];
+      page.on('console', m => logs.push(m.text()));
       await page.goto(url);
       const off = await page.evaluate(() => new Promise(res => {
         navigator.geolocation.getCurrentPosition(
@@ -250,11 +260,14 @@ async function cleanup({ ctx, profile }) {
           { timeout: 3000 }
         );
       }));
-      console.log('關掉開關後        : ' + JSON.stringify(off));
+      console.log('關掉開關後          : ' + JSON.stringify(off));
       // 斷言「拿不到我們設的座標」而不是「一定要 error」——
       // 真實定位在別的環境可能真的成功，那不算失敗。
+      // 注意：這一項把 storage 的 enabled 留在 false，profile 也還在用。
+      // 之後要在 browser a 這個區塊裡加測試，記得它跑在「已停用」的狀態下。
+      const overrodeAnything = logs.some(t => t.includes('定位已覆寫為'));
       results.push(['關掉開關後不再覆寫',
-        !(off.overridden && sameCoords(off, MOVED))]);
+        !overrodeAnything && !(off.overridden && sameCoords(off, MOVED))]);
     } finally {
       await cleanup(a);
     }
@@ -264,7 +277,7 @@ async function cleanup({ ctx, profile }) {
     const b = await launch(chromium, executablePath, noBridgeDir);
     try {
       // 先確認變體真的載入。變體 manifest 若指向目錄裡不存在的檔案（options.html、
-      // 之後的 popup.html），Chrome 會整個拒絕載入 —— 那樣 inject.js 根本沒注入，
+      // popup.html），Chrome 會整個拒絕載入 —— 那樣 inject.js 根本沒注入，
       // getCurrentPosition 走的是原生、照樣會回應，這一項就會「因為錯的理由」PASS。
       const probe = await b.ctx.newPage();
       const variantIds = await loadedExtensionIds(probe);
@@ -301,11 +314,11 @@ async function cleanup({ ctx, profile }) {
   }
 
   console.log('');
-  let allOk = results.length === 5;
+  let allOk = results.length === EXPECTED_ASSERTIONS;
   for (const [name, ok] of results) {
     console.log((ok ? '✓ PASS' : '✗ FAIL') + '  ' + name);
     if (!ok) allOk = false;
   }
-  if (results.length < 5) console.log('✗ 有測試未跑完（見上方例外）');
+  if (results.length < EXPECTED_ASSERTIONS) console.log('✗ 有測試未跑完（見上方例外）');
   process.exit(allOk ? 0 : 1);
 })();

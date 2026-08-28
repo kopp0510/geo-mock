@@ -14,7 +14,7 @@ Manifest V3、純原生 JS。無 build 工具、無套件管理器、無測試�
 
 ```
 geo-mock/
-├─ README.md          # 對外簡介（第一版能跑後補安裝/使用說明）
+├─ README.md          # 對外簡介、安裝與使用說明
 ├─ SPEC.md            # 功能規格
 ├─ CLAUDE.md          # 本檔：架構約束與開發流程
 ├─ manifest.json
@@ -101,6 +101,11 @@ geo-mock/
   同樣屬 SPEC 陷阱 4 的範圍，第三版再處理。
 - **設定送不到時最壞花掉呼叫端 timeout 的兩倍**：見 `inject.js` 逾時分支的註解。
   極端路徑，正常情況設定 20ms 內就到。
+- **預設 `enabled: true`，裝上就對所有網站生效**。task 3 加了 popup 開關之後重新
+  檢討過，決定維持開啟：載入未封裝擴充本身就是明確的開發意圖，再要求「裝完還要
+  手動打開」對開發工具是多餘的一步。代價是忘了關的話每個網站都在回報設定座標，
+  唯一線索是 `inject.js` 首次覆寫時印的那行 `console.info`。
+  若要改成 opt-in，`tools/verify.js` 前四項需先經 popup 打開開關才能跑。
 
 ## CLAUDE.md 維護
 

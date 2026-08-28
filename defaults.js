@@ -8,7 +8,7 @@
 // 後續檔案讀得到。真正的理由是：var 掛在 globalThis 上，且重複宣告不會丟
 // SyntaxError —— 萬一這支檔案被二次注入，const 會直接炸掉整個 content script。
 var GEO_MOCK_DEFAULTS = {
-  enabled: true,      // 第一版沒有 popup 開關，預設開著否則無從驗證（task 3 再檢討）
+  enabled: true,      // 有 popup 開關之後仍維持開啟，理由見 CLAUDE.md「已知限制」
   lat: 25.0330,       // 台北 101 附近
   lng: 121.5654,
   accuracy: 20,       // 公尺

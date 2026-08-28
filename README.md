@@ -1,21 +1,58 @@
 # geo-mock
 
-開發用的 Chrome 定位覆寫擴充。輸入地址或選擇已存地點，讓瀏覽器對任何網站回報指定的
-GPS 座標，用來檢視系統在不同區域的呈現結果。通用工具，不綁特定網站。
+開發用的 Chrome 定位覆寫擴充。設定一組座標，讓瀏覽器對任何網站回報它，
+用來檢視系統在不同區域的呈現結果。通用工具，不綁特定網站。
 
-## 狀態
+## 安裝
 
-**開發中** — 尚無可安裝版本。安裝與使用說明會在第一版（固定座標覆寫 + popup 開關）
-能跑之後補上。
+沒有打包上架，開發階段直接載入未封裝項目：
+
+1. 開 `chrome://extensions`
+2. 右上角開啟「開發人員模式」
+3. 點「載入未封裝項目」，選這個專案資料夾
+
+改完程式碼按該擴充的「重新載入」即生效。需 Chrome 111+（content script 的 `world` 欄位）。
+
+## 使用
+
+- **工具列圖示** → 啟用／停用開關、目前座標一覽、進階設定連結
+- **進階設定**（options 頁）→ 設定緯度、經度、accuracy
+
+**切換開關或改座標後，要重新整理目標分頁才生效。** 即時推送設定尚未實作
+（SPEC.md 第二版第 6 項）。
+
+預設是**開啟**的，座標為台北 101 附近。裝上之後每個網站都會拿到這組座標，
+不需要時記得用開關關掉 —— 覆寫生效時 `inject.js` 會在該頁 console 印一行
+`[geo-mock] 定位已覆寫為 …`，那是唯一的線索。
+
+## 目前做到哪
+
+第一版（固定座標覆寫）已可用：`getCurrentPosition` 覆寫、options 頁存座標、popup 開關。
+
+**還沒做**：地址搜尋、已存地點、jitter 抖動模式、設定即時推送、`watchPosition`、
+iframe 支援。見 [SPEC.md](SPEC.md) 的實作優先順序。
+
+**已知限制**：頁面自己的 JS 能監聽也能偽造擴充用的 CustomEvent，覆寫也能經
+`Geolocation.prototype` 繞過 —— 在會偵測 location spoofing 的網站上，這個擴充
+可被看穿也可被停用。細節見 [CLAUDE.md](CLAUDE.md)「已知限制」。
+
+## 開發
+
+```bash
+node tools/verify.js        # exit 0 = 五項斷言全過
+```
+
+需要 playwright 與 Chrome for Testing（**系統的 Chrome stable 不行**，
+151 起已忽略 `--load-extension`）。細節見 [tools/CLAUDE.md](tools/CLAUDE.md)。
 
 ## 技術
 
-Manifest V3、純原生 JS，無 build 工具。需 Chrome 111+（content script 的 `world` 欄位）。
+Manifest V3、純原生 JS，無 build 工具、無相依套件。
 
-地址搜尋使用 [Nominatim](https://nominatim.openstreetmap.org/)，資料來源
-© [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors。
+地址搜尋（尚未實作）將使用 [Nominatim](https://nominatim.openstreetmap.org/)，
+資料來源 © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors。
 
 ## 文件
 
 - [SPEC.md](SPEC.md) — 功能規格：三種模式、Popup 版面、Geocoding 政策、實作順序
-- [CLAUDE.md](CLAUDE.md) — 架構約束、已知陷阱、開發流程
+- [CLAUDE.md](CLAUDE.md) — 架構約束、已知陷阱、已知限制、開發流程

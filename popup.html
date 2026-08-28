@@ -39,18 +39,23 @@
   .note { margin: .8rem 0 0; padding-top: .8rem; border-top: 1px solid #0002; color: #666; }
   footer { margin-top: .7rem; }
   a { color: #2563eb; }
+
+  /* #666 在深色底上約 3:1，低於一般文字的 4.5:1。options.html 同樣處理。 */
+  @media (prefers-color-scheme: dark) {
+    dt, .note, .state.off { color: #a8a8a8; }
+  }
 </style>
 </head>
 <body>
   <header>
     <h1>geo-mock</h1>
     <label class="switch" title="啟用／停用定位覆寫">
-      <input type="checkbox" id="enabled">
+      <input type="checkbox" id="enabled" aria-label="啟用／停用定位覆寫" disabled>
       <span class="track"></span>
     </label>
   </header>
 
-  <p class="state" id="state">讀取中…</p>
+  <p class="state" id="state" role="status">讀取中…</p>
 
   <dl>
     <dt>緯度</dt><dd id="lat">–</dd>
