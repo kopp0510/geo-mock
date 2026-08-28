@@ -5,7 +5,7 @@
   'use strict';
 
   const el = Object.fromEntries(
-    ['enabled', 'state', 'lat', 'lng', 'accuracy', 'options', 'q', 'results', 'msg']
+    ['enabled', 'state', 'lat', 'lng', 'accuracy', 'options', 'q', 'go', 'results', 'msg']
       .map(k => [k, document.getElementById(k)])
   );
 
@@ -72,10 +72,13 @@
   });
 
   // ── 地址搜尋 ────────────────────────────────────────────────
-  // 送出時機與快取的規矩全在 geocode.js，這裡只管 debounce 與畫面。
+  // 速率、快取與去重的規矩全在 geocode.js，這裡只管觸發時機與畫面。
+  //
+  // **只由 Enter 或搜尋鈕觸發，不做打字即查。** Nominatim 政策的 Unacceptable Use
+  // 明文禁止 client 端的 auto-complete（「will get you banned」），跟速率無關，
+  // 加多長的 debounce 都不合規。要改動這段之前先看 geocode.js 開頭那段政策說明。
 
-  let timer = null;
-  let seq = 0;   // 連打時較早送出的請求可能較晚回來，用序號丟掉過期的結果
+  let seq = 0;   // 較早送出的請求可能較晚回來，用序號丟掉過期的結果
 
   function say(text, isErr) {
     el.msg.textContent = text;
@@ -87,16 +90,17 @@
     el.results.hidden = true;
   }
 
-  function apply(r) {
+  function apply(place) {
     try {
-      chrome.storage.local.set({ lat: r.lat, lng: r.lng }, () => {
+      chrome.storage.local.set({ lat: place.lat, lng: place.lng }, () => {
         if (chrome.runtime.lastError) {
           say('儲存失敗:' + chrome.runtime.lastError.message, true);
           return;
         }
-        showCoords({ lat: r.lat, lng: r.lng });
+        showCoords({ lat: place.lat, lng: place.lng });
         clearResults();
         el.q.value = '';
+        seq++;                     // 還在路上的那發結果作廢，別讓清單自己跳回來
         say('已套用，重新整理目標分頁即生效');
       });
     } catch (err) {
@@ -105,21 +109,26 @@
     }
   }
 
+  // 一列候選：地址在上、座標在下，整列是一顆按鈕，點了就套用。
+  function resultItem(place) {
+    const coord = document.createElement('span');
+    coord.className = 'coord';
+    coord.textContent = `${place.lat.toFixed(6)}, ${place.lng.toFixed(6)}`;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    // label 是外部回來的資料（Nominatim 的 display_name），
+    // 一律走 textContent／append，不碰 innerHTML
+    btn.append(place.label, coord);
+    btn.addEventListener('click', () => apply(place));
+
+    const li = document.createElement('li');
+    li.append(btn);
+    return li;
+  }
+
   function render(items) {
-    el.results.replaceChildren(...items.map((r) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      // display_name 是外部回來的資料，一律走 textContent／append，不碰 innerHTML
-      btn.append(r.label);
-      const coord = document.createElement('span');
-      coord.className = 'coord';
-      coord.textContent = `${r.lat.toFixed(6)}, ${r.lng.toFixed(6)}`;
-      btn.append(coord);
-      btn.addEventListener('click', () => apply(r));
-      const li = document.createElement('li');
-      li.append(btn);
-      return li;
-    }));
+    el.results.replaceChildren(...items.map(resultItem));
     el.results.hidden = items.length === 0;
   }
 
@@ -138,22 +147,29 @@
     });
   }
 
-  el.q.addEventListener('input', (e) => {
-    if (e.isComposing) return;       // 中文輸入法組字中，還不是完整的查詢字串
-    clearTimeout(timer);
+  function submit() {
     const q = el.q.value.trim();
-    if (!q) { seq++; clearResults(); say(''); return; }
-    timer = setTimeout(() => run(q), GEO_MOCK_GEOCODE.DEBOUNCE_MS);
+    if (!q) { el.q.focus(); return; }
+    run(q);
+  }
+
+  // 改字之後畫面上那份候選就對不上輸入框了，先清掉；
+  // seq++ 讓還在路上的那發結果作廢，否則它回來會把清掉的清單畫回去。
+  el.q.addEventListener('input', () => {
+    seq++;
+    clearResults();
+    say('');
   });
 
-  // Enter 不等 debounce 直接查；每秒 1 次的硬下限由 geocode.js 的閘門顧著。
   el.q.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter' || e.isComposing) return;
+    if (e.key !== 'Enter') return;
+    if (e.isComposing) return;       // 中文輸入法用 Enter 選字，那不是要送出
+    if (e.repeat) return;            // 壓著不放會連發，一次一發就夠
     e.preventDefault();
-    clearTimeout(timer);
-    const q = el.q.value.trim();
-    if (q) run(q);
+    submit();
   });
+
+  el.go.addEventListener('click', submit);
 
   el.options.addEventListener('click', (e) => {
     e.preventDefault();

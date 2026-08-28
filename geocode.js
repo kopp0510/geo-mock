@@ -3,11 +3,24 @@
 // 只在擴充自己的頁面（popup）載入，不是 content script，所以這裡可以直接用
 // chrome.storage 的 promise 版 API，也不必像 defaults.js 那樣防二次注入。
 //
-// Nominatim 使用政策是硬約束（見 SPEC.md），違反會被封鎖。這支檔案是唯一
-// 送出請求的地方，三條規定都在這裡兌現：
-//   1. 絕對上限每秒 1 次 → DEBOUNCE_MS（打字停下才查）+ gate()（實際送出的硬下限）
-//   2. 必須快取，重複查同一個字串可能被封 → chrome.storage.local
-//   3. 必須顯示 OpenStreetMap 出處 → popup.html 的 .attrib（不在這裡，但屬同一組約束）
+// ── Nominatim 使用政策（硬約束，違反會被封鎖）───────────────────────────
+// https://operations.osmfoundation.org/policies/nominatim/
+// 這支檔案是唯一送出請求的地方，政策的每一條都兌現在這裡：
+//
+// Requirements
+//   · 絕對上限每秒 1 次        → gate()，時間戳同時看記憶體與 storage
+//   · 必須提供可識別應用程式的 Referer 或 User-Agent，政策原文明寫
+//     「stock User-Agents as set by http libraries will not do」
+//                              → rules.json 的 declarativeNetRequest 規則。
+//                                fetch 設不了 User-Agent（瀏覽器禁止的 header），
+//                                只能在送出前由 DNR 改寫。**別把那條規則刪掉**
+//   · 必須顯示出處              → popup.html 的 .attrib
+//
+// Unacceptable Use（政策原文：strictly forbidden and will get you banned）
+//   · Auto-complete search：「you must not implement such a service on the
+//     client side using the API」→ 所以搜尋只由 Enter 或搜尋鈕觸發，
+//     **不做打字即查**。這條跟速率無關，debounce 拉多長都不合規，別加回來
+//   · 重複送同一個 query 會被歸類為 faulty client → 快取 + in-flight 去重
 const GEO_MOCK_GEOCODE = (() => {
   'use strict';
 
@@ -15,8 +28,8 @@ const GEO_MOCK_GEOCODE = (() => {
   const CACHE_KEY = 'geocodeCache';
   const LAST_AT_KEY = 'geocodeLastAt';
 
-  const DEBOUNCE_MS = 1200;        // 打字停多久才送；政策要求 ≥1000，留一點餘裕
   const MIN_INTERVAL_MS = 1000;    // 兩次實際送出之間的硬下限
+  const TIMEOUT_MS = 8000;         // 沒有這道，卡住的請求會鎖死整條 chain
   const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   const CACHE_MAX = 50;            // 快取筆數上限，超過丟最舊的
   const LIMIT = 5;                 // 候選清單長度
@@ -25,36 +38,50 @@ const GEO_MOCK_GEOCODE = (() => {
   // 所以真正把關的是存進 storage 的那份，記憶體這份只是省一次讀取。
   let lastRequestAt = 0;
   let chain = Promise.resolve();
+  const inflight = new Map();      // 正規化後的查詢字串 → 還在路上的那一發
 
   // 快取鍵：去頭尾、壓縮空白、轉小寫。「 台北  車站 」與「台北 車站」算同一筆。
-  const normalize = (q) => q.trim().replace(/\s+/g, ' ').toLowerCase();
+  function normalize(query) {
+    return query.trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  // chrome.storage.local.get 回的是整包物件，取單一鍵要寫 computed-key 解構、
+  // 鍵名得重複兩次。包一層讓下面的呼叫端讀起來是「拿這個鍵，沒有就給預設」。
+  async function readLocal(key, fallback) {
+    const stored = await chrome.storage.local.get(key);
+    return stored[key] === undefined ? fallback : stored[key];
+  }
 
   async function cacheGet(key) {
-    const { [CACHE_KEY]: cache = {} } = await chrome.storage.local.get(CACHE_KEY);
+    const cache = await readLocal(CACHE_KEY, {});
     const hit = cache[key];
     if (!hit || Date.now() - hit.ts > CACHE_TTL_MS) return null;
     return hit.results;
   }
 
   async function cachePut(key, results) {
-    const { [CACHE_KEY]: cache = {} } = await chrome.storage.local.get(CACHE_KEY);
+    const cache = await readLocal(CACHE_KEY, {});
     const next = { ...cache, [key]: { ts: Date.now(), results } };
+
     const keys = Object.keys(next);
-    if (keys.length > CACHE_MAX) {
-      keys.sort((a, b) => next[a].ts - next[b].ts)
-        .slice(0, keys.length - CACHE_MAX)
-        .forEach((k) => delete next[k]);
+    const excess = keys.length - CACHE_MAX;
+    if (excess > 0) {
+      keys.sort((a, b) => next[a].ts - next[b].ts);
+      for (const stale of keys.slice(0, excess)) delete next[stale];
     }
+
     await chrome.storage.local.set({ [CACHE_KEY]: next });
   }
 
   // 送出前先擋住，確保與上一次送出至少隔 MIN_INTERVAL_MS。
   async function gate() {
-    const { [LAST_AT_KEY]: storedAt = 0 } = await chrome.storage.local.get(LAST_AT_KEY);
+    const storedAt = await readLocal(LAST_AT_KEY, 0);
     // 取兩者較大的：storage 那份跨 popup 開關有效，記憶體那份反映本次剛送出的。
     const wait = MIN_INTERVAL_MS - (Date.now() - Math.max(storedAt, lastRequestAt));
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
     lastRequestAt = Date.now();
+    // 時間戳刻意在 fetch 之前就先落地：寫入失敗就直接 throw，請求根本不會送出，
+    // 不會出現「送了但沒記錄」而讓下一發提早穿過閘門。
     await chrome.storage.local.set({ [LAST_AT_KEY]: lastRequestAt });
   }
 
@@ -62,31 +89,67 @@ const GEO_MOCK_GEOCODE = (() => {
     await gate();
     const url = `${ENDPOINT}?format=jsonv2&limit=${LIMIT}`
       + `&accept-language=zh-TW&q=${encodeURIComponent(query)}`;
-    const res = await fetch(url);
+
+    let res;
+    try {
+      res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+    } catch (err) {
+      // 逾時或斷線。原始錯誤是英文的 TimeoutError／TypeError，
+      // 直接丟給使用者看沒有意義，但也不能整個吞掉。
+      console.error('[geo-mock] Nominatim 請求失敗:', err);
+      throw new Error(err.name === 'TimeoutError' ? '連線逾時' : '連不上 Nominatim');
+    }
     if (!res.ok) throw new Error(`Nominatim 回應 ${res.status}`);
+
     const raw = await res.json();
+    // 正常是一個陣列。擋掉錯誤物件之類的回應，否則錯誤訊息會變成
+    // 「raw.map is not a function」，對使用者毫無意義。
+    if (!Array.isArray(raw)) throw new Error('Nominatim 回應格式不符預期');
+
     // lat/lon 回來是字串，不轉的話存進 storage 的是字串，
     // 畫面上看起來一模一樣，但 inject.js 拿到的座標型別就錯了。
     return raw
-      .map((r) => ({ label: r.display_name, lat: parseFloat(r.lat), lng: parseFloat(r.lon) }))
-      .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+      .map((place) => ({
+        label: place.display_name,
+        lat: parseFloat(place.lat),
+        lng: parseFloat(place.lon),
+      }))
+      .filter((place) => place.label
+        && Number.isFinite(place.lat) && Number.isFinite(place.lng));
   }
 
-  // 查一組候選。先看快取，沒有才送出；同時只會有一個請求在路上（串成鏈），
-  // 否則兩發併行會一起穿過 gate()，變成同一秒兩次請求。
-  function search(query) {
+  // 查一組候選。先看快取，沒有才送出。
+  async function search(query) {
     const key = normalize(query);
-    if (!key) return Promise.resolve([]);
-    return cacheGet(key).then((hit) => {
-      if (hit) return hit;
-      const next = chain.catch(() => {}).then(() => fetchRemote(key));
-      chain = next.catch(() => {});   // 前一發失敗不能卡死後面的
-      return next.then(async (results) => {
-        await cachePut(key, results);
+    if (!key) return [];
+
+    const hit = await cacheGet(key);
+    if (hit) return hit;
+
+    // 同一個字串已經在路上就共用那一發。快取要等結果回來才寫得進去，
+    // 少了這道去重，連按兩次 Enter 就是兩發一模一樣的請求 ——
+    // 政策把「repeatedly the same query」列為會被封鎖的行為。
+    const pending = inflight.get(key);
+    if (pending) return pending;
+
+    // 同時只讓一發在路上（串成鏈），否則兩發併行會一起穿過 gate()，
+    // 變成同一秒兩次請求。
+    const next = chain.catch(() => {}).then(() => fetchRemote(key));
+    chain = next.catch(() => {});   // 前一發失敗不能卡死後面的
+
+    const task = next
+      .then(async (results) => {
+        // 快取是最佳努力。寫不進去也不該把已經到手的結果丟掉 ——
+        // 那等於白打一發請求還兩手空空，下次查同一個字串又得再送一遍。
+        await cachePut(key, results)
+          .catch((err) => console.error('[geo-mock] 快取寫入失敗:', err));
         return results;
-      });
-    });
+      })
+      .finally(() => inflight.delete(key));
+
+    inflight.set(key, task);
+    return task;
   }
 
-  return { search, DEBOUNCE_MS };
+  return { search };
 })();

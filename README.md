@@ -16,9 +16,9 @@
 ## 使用
 
 - **工具列圖示** → 啟用／停用開關、地址搜尋、目前座標一覽、進階設定連結
-- **地址搜尋**（popup）→ 打「台北車站」這類地址或地標，停手約 1 秒後出候選清單
-  （地址 + 座標），點一下就套用。按 Enter 可以不等。查過的字串會快取，
-  重複查同一個不會再送出請求
+- **地址搜尋**（popup）→ 打「台北車站」這類地址或地標，**按 Enter 或旁邊的搜尋鈕**
+  出候選清單（地址 + 座標），點一下就套用。查過的字串會快取，重複查不會再送請求。
+  刻意不做打字即查——Nominatim 政策明文禁止 client 端的 auto-complete
 - **進階設定**（options 頁）→ 設定緯度、經度、accuracy。
   最上面有「貼上座標」欄，可以把 Google Maps 右鍵複製的
   `24.262246, 120.624503` 這種一整串直接貼進去，會自動拆進下面兩欄
@@ -57,8 +57,11 @@ Manifest V3、純原生 JS，無 build 工具、無相依套件。
 
 地址搜尋使用 [Nominatim](https://nominatim.openstreetmap.org/)，
 資料來源 © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors。
-它的使用政策是硬約束（每秒 1 次上限、必須快取、必須標示出處），
-全部集中在 `geocode.js`；`tools/verify.js` 刻意不自動化這段，避免重複請求被封鎖。
+它的[使用政策](https://operations.osmfoundation.org/policies/nominatim/)是硬約束：
+每秒至多 1 次、必須快取、必須以可識別的 User-Agent 送出、必須標示出處，
+而且不得實作打字即查。規定集中在 `geocode.js` 與 `rules.json`
+（後者用 declarativeNetRequest 改寫 User-Agent，`fetch` 設不了這個 header）。
+`tools/verify.js` 刻意不自動化這段，避免重複請求被封鎖。
 
 ## 文件
 

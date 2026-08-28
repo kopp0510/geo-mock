@@ -26,7 +26,9 @@ jitter 是為了測試座標微幅飄動時 UI 的反應（釘子跳動、重複
 由上而下：
 
 1. 標題列：名稱 + 啟用/停用開關
-2. 地址搜尋框 → 候選清單（顯示地址與座標）→ 點選即套用
+2. 地址搜尋框 + 搜尋鈕 → 候選清單（顯示地址與座標）→ 點選即套用。
+   **按 Enter 或搜尋鈕才查，不做打字即查** —— Nominatim 政策明文禁止 client 端的
+   auto-complete，見下方 Geocoding
 3. 資料來源標示：OpenStreetMap
 4. 模式切換：關閉 / 固定 / 抖動（三選一）
 5. 目前座標與 accuracy 顯示
@@ -39,24 +41,40 @@ Options 頁放不常改的欄位：altitude、altitudeAccuracy、heading、speed
 
 使用 Nominatim：`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=zh-TW&q=...`
 
-**使用政策必須遵守**（https://operations.osmfoundation.org/policies/nominatim/）：
+**使用政策必須遵守**（https://operations.osmfoundation.org/policies/nominatim/）。
+以下逐條抄自政策原文，不是摘要意譯：
 
-- 絕對上限每秒 1 次請求 → 搜尋框要 debounce，至少 1000ms
-- 必須快取結果，重複送相同查詢可能被封鎖 → 查過的地址存進 `chrome.storage.local`
-- 必須顯示 OpenStreetMap 出處標示
-- 需提供可識別應用程式的 HTTP Referer 或 User-Agent
+Requirements
+- 絕對上限每秒 1 次請求 → `geocode.js` 的 `gate()`
+- 需提供可識別應用程式的 HTTP Referer 或 User-Agent，原文補了一句
+  「stock User-Agents as set by http libraries will not do」→ 見下方「識別要求」
+- 必須快取結果，重複送相同查詢會被歸類為 faulty client 並封鎖
+  → 查過的地址存進 `chrome.storage.local`，加上同字串的 in-flight 去重
+- 必須顯示 OpenStreetMap 出處標示 → `popup.html` 的 `.attrib`
 
-**識別問題（2026-08-28 實測結果，原「未解事項」）**：擴充頁的 `fetch` 打得通，
-Nominatim 回 200 且帶 `access-control-allow-origin: *`。但實際送出的請求**沒有任何
-應用程式識別**——`User-Agent` 是通用的 Chrome 字串，`Referer` 是空的（Chrome 不替
-擴充頁的 fetch 送 Referer，跟原本預期的 `chrome-extension://<id>` 不一樣）。
-也就是說政策「需提供可識別應用程式的 Referer 或 User-Agent」這條目前**沒有滿足**，
-只是還沒被擋。
+Unacceptable Use（原文：strictly forbidden and **will get you banned**）
+- **Auto-complete search** —— 原文：「you must not implement such a service on the
+  client side using the API」。所以搜尋只由 Enter 或搜尋鈕觸發，**不做打字即查**。
+  這條跟速率無關，加多長的 debounce 都不合規，別再把 `input` 監聽接回查詢
+- Systematic queries / Scraping of details / Reselling —— 本專案不涉及
 
-現在靠壓低請求量降低風險：打字 debounce 1200ms、實際送出之間硬性間隔 1 秒、
-查過的字串進 `chrome.storage.local` 快取。若日後被擋，改用有 API key 的服務
-（LocationIQ / Mapbox / Google Geocoding）——`geocode.js` 是唯一送出請求的地方，
-換服務只動那一支。
+**識別要求怎麼滿足的（2026-08-28 實測，原「未解事項」的結論）**
+
+先確認了問題比原本預期的更糟：`fetch` 設不了 `User-Agent`（瀏覽器禁止的 header），
+而擴充頁的請求實測**連 `Referer` 都沒有**——不是原本以為的 `chrome-extension://<id>`，
+Chrome 根本不替擴充頁的 fetch 送這個 header。等於兩條識別路徑都是空的。
+
+解法：`declarativeNetRequest` 的靜態規則（`rules.json`）在請求送出前把 `User-Agent`
+改寫成 `geo-mock/<版本>`。DNR 走的是網路層，不受 fetch 的 forbidden header 限制。
+實測用 CDP 的 `Network.requestWillBeSentExtraInfo` 看實際上線的 header，確認是改寫
+後的值，不是 Chrome 預設 UA。
+
+副作用：規則以網址比對（`||nominatim.openstreetmap.org/` 的 XHR），所以使用者自己
+開著 Nominatim 網頁時，那頁的 XHR 也會帶上這個 UA。影響極小，但**別把規則範圍放寬到
+整個 openstreetmap.org**。
+
+若日後仍被擋，改用有 API key 的服務（LocationIQ / Mapbox / Google Geocoding）——
+`geocode.js` 是唯一送出請求的地方，換服務只動那一支。
 
 ## 實作優先順序
 

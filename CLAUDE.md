@@ -22,6 +22,7 @@ geo-mock/
 ├─ inject.js          # world: MAIN, run_at: document_start — 實際覆寫 geolocation
 ├─ bridge.js          # world: ISOLATED, run_at: document_start — 讀 storage 推給 inject
 ├─ geocode.js         # Nominatim 查詢、快取、每秒 1 次閘門。只在 popup 載入，非 content script
+├─ rules.json         # declarativeNetRequest 規則：送 Nominatim 前改寫 User-Agent
 ├─ popup.html / popup.js       # 啟用開關、地址搜尋、目前座標一覽、進階設定連結
 ├─ options.html / options.js   # 座標設定。最上面的「貼上座標」欄接 Google Maps
 │                             #   右鍵複製的「緯度, 經度」整串，拆進下面兩欄
@@ -38,7 +39,10 @@ geo-mock/
 - **ISOLATED world 是多檔載入，順序有語意依賴**：`["defaults.js", "bridge.js"]`，
   `defaults.js` 必須排在前面。順序反了或檔案漏掉，`bridge.js` 會拿不到
   `GEO_MOCK_DEFAULTS`；那條路徑現在會 `console.error` 並退回真實定位，不會靜默失效
-- `manifest.json` 需 `host_permissions: ["https://nominatim.openstreetmap.org/"]`
+- `manifest.json` 需 `host_permissions: ["https://nominatim.openstreetmap.org/*"]`
+- **Nominatim 的 User-Agent 只能靠 `declarativeNetRequest` 改**：`fetch` 設不了這個
+  header（瀏覽器禁止），擴充頁也不送 `Referer`，兩條識別路徑都空的。`rules.json` 的
+  靜態規則在網路層改寫，實測有效（見 SPEC.md）。刪掉那條規則 = 直接違反政策
 
 ## 不要做的事
 
@@ -63,12 +67,14 @@ geo-mock/
 
 5. **jitter 以「設定的座標」為中心抖動**，不是以真實位置為中心。
 
-6. **Nominatim 使用政策是硬約束**（見 SPEC.md）：搜尋框 debounce ≥1000ms、結果必須快取
-   進 `chrome.storage.local`、必須顯示 OpenStreetMap 出處。違反會被封鎖。
-   三條規定都兌現在 `geocode.js`（出處那行在 `popup.html` 的 `.attrib`）。
+6. **Nominatim 使用政策是硬約束**（政策原文逐條抄在 SPEC.md）：每秒至多 1 次、
+   必須快取、必須可識別、必須標出處，而且 **auto-complete 是明文禁止的**——
+   搜尋只由 Enter 或搜尋鈕觸發，`input` 事件只用來清掉對不上的舊清單，**不查詢**。
+   把打字即查加回去等於自找封鎖，跟 debounce 多長無關。
+   規定兌現在 `geocode.js` + `rules.json`（出處那行在 `popup.html` 的 `.attrib`）。
    **要打 Nominatim 一律經過 `geocode.js`**，別在別的地方另開 fetch——
-   速率閘門是模組內的狀態，繞過去就等於沒有。同理，`tools/verify.js` 刻意不驗地址搜尋：
-   自動化重複請求正是政策明文禁止的，這段只做手動驗證。
+   速率閘門與去重都是模組內的狀態，繞過去就等於沒有。同理，`tools/verify.js` 刻意
+   不驗地址搜尋：自動化重複請求正是政策禁止的，這段只做手動驗證。
 
 ## 開發流程（每個功能段落依序走）
 <!-- dd-loop-version: 6step；供 /dd-init 判斷是否提議升級，勿刪 -->

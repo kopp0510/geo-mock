@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "user-agent",
+          "operation": "set",
+          "value": "geo-mock/0.1.0 (Chrome extension; local development geolocation tool)"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||nominatim.openstreetmap.org/",
+      "resourceTypes": ["xmlhttprequest"]
+    }
+  }
+]

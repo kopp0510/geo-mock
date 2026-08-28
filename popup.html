@@ -30,9 +30,14 @@
 
   /* 地址搜尋區 */
   .search { margin: .8rem 0 0; }
+  .searchbar { display: flex; gap: .4rem; }
   #q {
-    width: 100%; padding: .4rem .5rem; font: inherit; box-sizing: border-box;
+    flex: 1; min-width: 0; padding: .4rem .5rem; font: inherit; box-sizing: border-box;
     border: 1px solid #bbb; border-radius: 4px; background: Field; color: FieldText;
+  }
+  #go {
+    flex: none; padding: .4rem .7rem; font: inherit; cursor: pointer;
+    border: 0; border-radius: 4px; background: #2563eb; color: #fff;
   }
   #results {
     list-style: none; margin: .4rem 0 0; padding: 0;
@@ -80,8 +85,11 @@
   </header>
 
   <div class="search">
-    <input id="q" type="search" placeholder="搜尋地址或地標，例如 台北車站"
-           autocomplete="off" spellcheck="false" aria-label="搜尋地址或地標">
+    <div class="searchbar">
+      <input id="q" type="search" placeholder="地址或地標，按 Enter 搜尋"
+             autocomplete="off" spellcheck="false" aria-label="搜尋地址或地標">
+      <button type="button" id="go">搜尋</button>
+    </div>
     <ul id="results" hidden></ul>
     <p class="msg" id="msg" role="status"></p>
     <p class="attrib">地址資料來源：<a href="https://www.openstreetmap.org/copyright"
