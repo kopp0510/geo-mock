@@ -27,6 +27,9 @@ node tools/verify.js        # exit 0 = 全部通過
    - **查詢跑在 service worker**：manifest 有沒有註冊 `background.service_worker`、
      `popup.html` 有沒有又直接載入 `geocode.js`。查詢搬回 popup 的話，
      「中途關掉 popup → 結果沒進快取 → 下次重送同一個 query」那個洞就回來了
+   - **`geocode.js` 的 `TIMEOUT_MS` 短於 30 秒**：Chrome 會終止「fetch 超過 30 秒
+     還沒回應」的 service worker，而 `gate()` 的時間戳在 fetch 之前就落地了 ——
+     把逾時調長到 30 秒以上，就等於把上面那個洞從另一個方向開回來
 2. 定位覆寫生效（載入後呼叫 → 回傳 `defaults.js` 的座標）
 3. 設定未達時的請求排隊（`document_start` 搶先呼叫 → 被壓住十幾 ms 後正確回應）
 4. 貼上「緯度, 經度」會拆進兩欄（Google Maps 右鍵複製的格式，位數留滿確認不被截斷）

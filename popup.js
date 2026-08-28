@@ -141,21 +141,24 @@
 
   // 查詢跑在 service worker（background.js），不在這裡。這樣 popup 中途被關掉時，
   // fetch 與快取寫入照樣完成，不會下次再送一遍同樣的查詢。
-  function run(query) {
+  async function run(query) {
     const mine = ++seq;
     say('搜尋中…');
-    chrome.runtime.sendMessage({ type: 'geo-mock:search', query }).then((res) => {
+    try {
+      const res = await chrome.runtime.sendMessage({ type: 'geo-mock:search', query });
       if (mine !== seq) return;      // 已經有更新的查詢送出，這份結果作廢
+      // 回覆沒送到時 res 是 undefined（不是 reject），
+      // 不擋的話下一行會讀到 undefined.results
       if (!res) throw new Error('service worker 沒有回應');
       if (res.error) throw new Error(res.error);
       render(res.results);
       say(res.results.length ? '' : '找不到符合的地點');
-    }).catch((err) => {
+    } catch (err) {
       if (mine !== seq) return;
       console.error('[geo-mock] 地址搜尋失敗:', err);
       invalidate();
       say('搜尋失敗:' + err.message, true);
-    });
+    }
   }
 
   function submit() {

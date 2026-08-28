@@ -112,34 +112,54 @@ function startServer() {
   });
 }
 
-// 純靜態檢查：兩條會靜默回退的政策設定 —— 改寫 User-Agent 的 DNR 規則，
-// 以及「查詢跑在 service worker」這件事。
-//
-// 這條規則是 Nominatim 唯一認得出這個應用的線索（政策硬要求，見 SPEC.md），
-// 而它壞掉是**靜默的**：規則檔被刪、enabled 被改 false、權限被拿掉、或 UA 的
-// 版本號跟 manifest 脫鉤 —— 搜尋照樣有結果，要到被封鎖那天才會發現。
+// 純靜態檢查：兩件會靜默回退的政策設定 —— 「查詢跑在 service worker」，以及改寫
+// User-Agent 的 DNR 規則。共同點是壞掉不會有症狀：搜尋照樣有結果，要到被 Nominatim
+// 封鎖那天才會發現。
 //
 // 刻意只讀檔比對，不送任何請求：自動化打 Nominatim 正是政策明文禁止的
 // （見 tools/CLAUDE.md「為什麼不驗地址搜尋」）。
-// 回傳 null 表示通過，回傳字串表示哪裡不對。
+// 這三支一律回傳 null 表示通過、回傳字串表示哪裡不對，所以能用 || 串起來。
 function checkPolicySetup() {
   const mf = JSON.parse(fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf8'));
+  return checkServiceWorker(mf) || checkUaRule(mf);
+}
 
-  // 查詢一旦搬回 popup，「中途關掉 popup → 結果沒進快取 → 下次重送同一個 query」
-  // 那個洞就回來了，而且照樣有搜尋結果，測不出來。兩個癥狀各查一個：
-  const sw = (mf.background || {}).service_worker;
+// 查詢一旦搬回 popup，「中途關掉 popup → 結果沒進快取 → 下次重送同一個 query」
+// 那個洞就回來了，而且照樣有搜尋結果，測不出來。兩個癥狀各查一個。
+function checkServiceWorker(mf) {
+  const sw = mf.background?.service_worker;
   if (!sw) return 'manifest 沒有註冊 background.service_worker，查詢會退回 popup 裡跑';
   if (!fs.existsSync(path.join(EXT_DIR, sw))) return 'service worker 檔案不存在:' + sw;
-  if (fs.readFileSync(path.join(EXT_DIR, 'popup.html'), 'utf8').includes('geocode.js')) {
+  // 比對 script 標籤而不是整檔搜 'geocode.js'：這個專案註解密度很高，
+  // 一句提到 geocode.js 的註解就會讓這項變紅，訊息還跟事實相反。
+  if (/<script[^>]+src=["']geocode\.js["']/.test(
+    fs.readFileSync(path.join(EXT_DIR, 'popup.html'), 'utf8'))) {
     return 'popup.html 直接載入了 geocode.js —— 查詢應該走 service worker';
   }
 
-  if (!(mf.permissions || []).some(p => p.startsWith('declarativeNetRequest'))) {
+  // fetch 逾時與 service worker 的壽命是耦合的：Chrome 會終止「fetch 超過 30 秒
+  // 還沒回應」的 SW。gate() 的時間戳在 fetch 之前就落地，被砍在中間的話結果
+  // 到不了 cachePut —— 下次查同字串重送一次，跟這個 SW 本來要修的洞一模一樣。
+  const timeout = fs.readFileSync(path.join(EXT_DIR, 'geocode.js'), 'utf8')
+    .match(/const TIMEOUT_MS = (\d+)/);
+  if (!timeout) return 'geocode.js 找不到 TIMEOUT_MS，無法確認它短於 SW 的 30 秒上限';
+  if (Number(timeout[1]) >= 30000) {
+    return `geocode.js 的 TIMEOUT_MS=${timeout[1]} 不得 ≥30000 —— `
+      + 'Chrome 會在 fetch 超過 30 秒時終止 service worker';
+  }
+
+  return null;
+}
+
+// 這條規則是 Nominatim 唯一認得出這個應用的線索（政策硬要求，見 SPEC.md）：
+// 規則檔被刪、enabled 被改 false、權限被拿掉、urlFilter 被放寬到整個
+// openstreetmap.org、或 UA 的版本號跟 manifest 脫鉤，任何一項都會讓識別失效。
+function checkUaRule(mf) {
+  if (!(mf.permissions ?? []).some(p => p.startsWith('declarativeNetRequest'))) {
     return 'manifest 少了 declarativeNetRequest 系列權限，規則不會生效';
   }
 
-  const enabled = ((mf.declarative_net_request || {}).rule_resources || [])
-    .filter(r => r.enabled);
+  const enabled = (mf.declarative_net_request?.rule_resources ?? []).filter(r => r.enabled);
   if (enabled.length !== 1) {
     return `manifest 的 rule_resources 應該剛好一筆 enabled，實際 ${enabled.length} 筆`;
   }
@@ -149,7 +169,7 @@ function checkPolicySetup() {
   const rules = JSON.parse(fs.readFileSync(rulePath, 'utf8'));
 
   const ua = rules
-    .flatMap(r => ((r.action || {}).requestHeaders) || [])
+    .flatMap(r => r.action?.requestHeaders ?? [])
     .find(h => h.header.toLowerCase() === 'user-agent');
   if (!ua) return '規則檔裡沒有改寫 user-agent 的項目';
   if (ua.operation !== 'set') return 'user-agent 的 operation 應該是 set，實際 ' + ua.operation;
@@ -162,7 +182,7 @@ function checkPolicySetup() {
   // 範圍不能放寬：規則若涵蓋整個 openstreetmap.org，使用者自己瀏覽 OSM 時
   // 送出的請求也會被冠上 geo-mock 的名字，被限流的是我們（見 SPEC.md）。
   const tooWide = rules
-    .map(r => (r.condition || {}).urlFilter || '')
+    .map(r => r.condition?.urlFilter ?? '')
     .filter(f => !f.includes('nominatim.openstreetmap.org'));
   if (tooWide.length) return '規則的 urlFilter 超出 nominatim:' + tooWide.join(', ');
 

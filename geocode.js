@@ -2,7 +2,8 @@
 //
 // 由 service worker（background.js）以 importScripts 載入，不是 content script，
 // 所以這裡可以直接用 chrome.storage 的 promise 版 API，也不必像 defaults.js 那樣
-// 防二次注入。**popup 不載入這支檔案** —— 它改用 sendMessage 請 service worker 查，
+// 防二次注入。
+// **popup 不載入這支檔案** —— 它改用 sendMessage 請 service worker 查，
 // 理由見 background.js 開頭（popup 中途關閉時快取要能落地）。
 //
 // ── Nominatim 使用政策（硬約束，違反會被封鎖）───────────────────────────
@@ -31,13 +32,20 @@ const GEO_MOCK_GEOCODE = (() => {
   const LAST_AT_KEY = 'geocodeLastAt';
 
   const MIN_INTERVAL_MS = 1000;    // 兩次實際送出之間的硬下限
-  const TIMEOUT_MS = 8000;         // 沒有這道，卡住的請求會鎖死整條 chain
+  // 兩個理由，第二個是硬上限：
+  //   1. 沒有這道，卡住的請求會鎖死整條 chain
+  //   2. **必須明顯小於 30000** —— Chrome 會終止「fetch 超過 30 秒還沒回應」的
+  //      service worker，而 gate() 的時間戳在 fetch 之前就寫進 storage 了。
+  //      被砍在中間的話結果到不了 cachePut，下次查同一個字串就重送一次，
+  //      正是 background.js 開頭那段要修掉的行為。tools/verify.js 第 1 項守著這條
+  const TIMEOUT_MS = 8000;
   const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   const CACHE_MAX = 50;            // 快取筆數上限，超過丟最舊的
   const LIMIT = 5;                 // 候選清單長度
 
-  // popup 每次開啟都是新的 JS 環境，記憶體裡的時間戳會歸零 ——
-  // 所以真正把關的是存進 storage 的那份，記憶體這份只是省一次讀取。
+  // service worker 被 Chrome 回收、下次事件再重啟時是全新的 JS 環境，
+  // 記憶體裡的時間戳會歸零 —— 所以真正把關的是存進 storage 的那份，
+  // 記憶體這份只是省一次讀取。
   let lastRequestAt = 0;
   let chain = Promise.resolve();
   const inflight = new Map();      // 正規化後的查詢字串 → 還在路上的那一發
