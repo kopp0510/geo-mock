@@ -46,6 +46,9 @@ geo-mock/
   例外用 `NOT_WATCHED` 扣掉，每一個都要寫理由（目前只有 `places`：只有 popup
   讀寫，存個地點不該驚動每個分頁）。`geocodeCache` / `geocodeLastAt` 不在 defaults
   裡，本來就不會被派生進來
+- **推送出去的內容也只有 `WATCHED` 那幾個鍵**（`bridge.js` 的 `pick()`），不是整份
+  設定。這個事件頁面監聽得到，整份送的話已存地點連同精確座標會被每個網站讀走。
+  `tools/verify.js` 第 8 項守著這條 —— 拿掉過濾功能完全正常，沒有任何症狀
 - manifest 的 `content_scripts` 用 `world` 欄位需要 Chrome 111+
 - **ISOLATED world 是多檔載入，順序有語意依賴**：`["defaults.js", "bridge.js"]`，
   `defaults.js` 必須排在前面。順序反了或檔案漏掉，`bridge.js` 會拿不到
@@ -130,7 +133,8 @@ geo-mock/
 
 - **覆寫可被頁面看穿也可被關掉**：`geo-mock:settings` / `geo-mock:ready` 是 document
   上的普通 CustomEvent，頁面自己的 JS 能監聽（讀到你設的座標）也能偽造
-  （送一個帶大序號的 `{"enabled":false}` 就關掉覆寫）。跨 world 沒有私密通道可用，
+  （送一個帶大序號的 `{"enabled":false}` 就關掉覆寫）。能讀到的只有 `WATCHED`
+  那幾個鍵 —— 已存地點不在推送內容裡，見「架構約束」。跨 world 沒有私密通道可用，
   這是架構的必然代價。**在會偵測 location spoofing 的網站上測不出預期結果時，
   先想到這條。** 事件協定的 `seq` 是為了擋自家的亂序而加的，對惡意偽造沒有幫助 ——
   頁面送一個很大的 seq 就能把後續真正的更新全部擋在門外。

@@ -52,7 +52,7 @@
 ## 開發
 
 ```bash
-node tools/verify.js        # exit 0 = 九項斷言全過
+node tools/verify.js        # exit 0 = 十項斷言全過
 ```
 
 需要 playwright 與 Chrome for Testing（**系統的 Chrome stable 不行**，

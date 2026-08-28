@@ -4,6 +4,9 @@
   'use strict';
 
   const FIELDS = ['lat', 'lng', 'accuracy', 'jitterRadius'];
+  // 半徑沒有上限的話，多按幾個零就會讓抖動算出跨半個地球的座標。
+  // inject.js 那邊會夾回合法範圍，但使用者看到的行為會很莫名。
+  const JITTER_MAX = 100000;   // 公尺
   const el = Object.fromEntries(FIELDS.map(k => [k, document.getElementById(k)]));
   const form = document.getElementById('form');
   const status = document.getElementById('status');
@@ -50,7 +53,9 @@
     if (Math.abs(values.lat) > 90)  { say('緯度必須在 -90 ～ 90 之間', 'err'); el.lat.focus(); return; }
     if (Math.abs(values.lng) > 180) { say('經度必須在 -180 ～ 180 之間', 'err'); el.lng.focus(); return; }
     if (values.accuracy < 0)        { say('accuracy 不能是負數', 'err'); el.accuracy.focus(); return; }
-    if (values.jitterRadius < 0)    { say('抖動半徑不能是負數', 'err'); el.jitterRadius.focus(); return; }
+    if (values.jitterRadius < 0 || values.jitterRadius > JITTER_MAX) {
+      say(`抖動半徑要在 0 ～ ${JITTER_MAX} 之間`, 'err'); el.jitterRadius.focus(); return;
+    }
 
     chrome.storage.local.set(values, () => {
       if (chrome.runtime.lastError) {

@@ -58,6 +58,15 @@
   const NOT_WATCHED = ['places'];
   const WATCHED = Object.keys(GEO_MOCK_DEFAULTS).filter((k) => !NOT_WATCHED.includes(k));
 
+  // 送出去的內容也只留 WATCHED，不是整份設定。這個事件頁面自己的 JS 監聽得到
+  // （見 CLAUDE.md「已知限制」），整份送的話，使用者自己命名的地點簿連同精確
+  // 座標會被每個網站讀走 —— 那超出「頁面看得到你設的那組假座標」那條已知限制
+  // 講好的範圍。inject.js 從頭到尾沒讀過 places，多送純粹是白給。
+  //
+  // 過濾放在這裡而不是 publish() 裡：publish 也服務 DISABLED 那條路徑，
+  // 而那條在 GEO_MOCK_DEFAULTS 沒載入時就會跑，那時 WATCHED 還在 TDZ 裡。
+  const pick = (settings) => Object.fromEntries(WATCHED.map((k) => [k, settings[k]]));
+
   try {
     chrome.storage.local.get(GEO_MOCK_DEFAULTS, (settings) => {
       // context 在讀取途中失效時，callback 仍可能被呼叫，但帶著 lastError
@@ -65,7 +74,7 @@
         publish(DISABLED);
         return;
       }
-      publish(settings);
+      publish(pick(settings));
     });
 
     // 改了座標或開關之後，不必重新整理分頁就生效（SPEC 第二版第 6 項）。
@@ -85,7 +94,7 @@
           // 讀不到就維持目前這份設定。這裡不送 DISABLED —— 覆寫已經在運作，
           // 一次讀取失敗不該把它關掉。
           if (chrome.runtime.lastError) return;
-          publish(settings);
+          publish(pick(settings));
         });
       } catch (err) {
         console.warn('[geo-mock] 設定更新推送失敗，這個分頁需要重新整理:', err);

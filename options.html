@@ -58,9 +58,9 @@
       <input id="accuracy" type="number" step="any" min="0" required>
     </label>
     <label>
-      <span class="name">抖動半徑<span class="hint">公尺。抖動模式下以上面的座標為中心，
-        每次定位在這個半徑內隨機取一點</span></span>
-      <input id="jitterRadius" type="number" step="any" min="0" required>
+      <span class="name">抖動半徑<span class="hint">公尺，上限 100000（100 公里）。
+        抖動模式下以上面的座標為中心，每次定位在這個半徑內隨機取一點</span></span>
+      <input id="jitterRadius" type="number" step="any" min="0" max="100000" required>
     </label>
     <button type="submit">儲存</button><span id="status" role="status"></span>
   </form>

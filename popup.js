@@ -21,12 +21,12 @@
   // 模式切換只有「固定／抖動」兩個，沒有「關閉」—— 那由上面的開關表達，
   // 否則同一件事會有兩個入口。SPEC 寫的是三選一，偏離的理由記在 SPEC.md。
   function showMode() {
-    const jitter = current.mode === 'jitter';
-    el.modeFixed.checked = !jitter;
-    el.modeJitter.checked = jitter;
+    const isJitter = current.mode === 'jitter';
+    el.modeFixed.checked = !isJitter;
+    el.modeJitter.checked = isJitter;
     // 半徑只在抖動模式下有意義，固定模式顯示它只會讓人以為它有作用
-    el.radiusLabel.hidden = !jitter;
-    el.radius.hidden = !jitter;
+    el.radiusLabel.hidden = !isJitter;
+    el.radius.hidden = !isJitter;
     el.radius.textContent = current.jitterRadius + ' m';
   }
 
@@ -121,13 +121,24 @@
   }
 
   function apply(place) {
+    // 這裡是所有 lat/lng 寫入 storage 的收口。搜尋候選在 geocode.js 已經
+    // parseFloat + isFinite 過濾過，但已存地點是從 storage 讀回來的 ——
+    // 舊版本或手動編輯留下的壞資料會一路寫進去，畫面顯示 undefined 而 storage
+    // 還是舊值，那是最難查的那種不一致。
+    const lat = Number(place.lat);
+    const lng = Number(place.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      say('這個地點的座標壞掉了', true);
+      return;
+    }
+
     try {
-      chrome.storage.local.set({ lat: place.lat, lng: place.lng }, () => {
+      chrome.storage.local.set({ lat, lng }, () => {
         if (chrome.runtime.lastError) {
           say('儲存失敗:' + chrome.runtime.lastError.message, true);
           return;
         }
-        showCoords({ lat: place.lat, lng: place.lng });
+        showCoords({ lat, lng });
         invalidate();
         el.q.value = '';           // 程式賦值不會觸發 input，訊息不會被洗掉
         say('已套用');
@@ -208,21 +219,22 @@
   // 兩顆 radio 共用一個 handler：值就在 e.target.value 上，分開寫只是重複。
   function onModeChange(e) {
     const mode = e.target.value;
+    // 兩條失敗路徑做的事一樣：沒存成就把畫面扳回實際值，不要顯示一個沒生效的狀態
+    const failed = (message) => {
+      showMode();
+      say('模式儲存失敗:' + message, true);
+    };
     try {
       chrome.storage.local.set({ mode }, () => {
-        if (chrome.runtime.lastError) {
-          showMode();     // 沒存成就把畫面扳回實際值，不要顯示一個沒生效的狀態
-          say('模式儲存失敗:' + chrome.runtime.lastError.message, true);
-          return;
-        }
+        if (chrome.runtime.lastError) { failed(chrome.runtime.lastError.message); return; }
         current.mode = mode;
         showMode();
         say(mode === 'jitter' ? `抖動模式，半徑 ${current.jitterRadius} m` : '固定模式');
       });
     } catch (err) {
-      showMode();
+      // 同步例外是非預期的程式錯誤，多印一行；lastError 是預期內的失敗，不印
       console.error('[geo-mock] popup 儲存模式失敗:', err);
-      say('模式儲存失敗:' + err.message, true);
+      failed(err.message);
     }
   }
 
@@ -233,7 +245,7 @@
   // 只有這裡讀寫 places。bridge.js 的 WATCHED 不含這個鍵，所以存／刪地點
   // 不會對每個開著的分頁推一次設定。
 
-  function placeChip(place, index) {
+  function placeChip(place) {
     const use = document.createElement('button');
     use.type = 'button';
     use.className = 'chip';
@@ -247,8 +259,9 @@
     del.title = '刪除';
     del.setAttribute('aria-label', `刪除 ${place.label}`);
     del.textContent = '×';
-    // 用 index 而不是比對內容：同名同座標存兩次也刪得掉正確的那個
-    del.addEventListener('click', () => savePlaces(places.filter((_, n) => n !== index)));
+    // 比對物件參考而不是 index 或內容：index 在前一次刪除後就位移了，
+    // 而同名同座標存兩次仍是兩個不同的物件，刪得掉正確的那個。
+    del.addEventListener('click', () => savePlaces((list) => list.filter((p) => p !== place)));
 
     const li = document.createElement('li');
     li.append(use, del);
@@ -262,20 +275,42 @@
     el.addPlace.textContent = full ? `已存滿 ${PLACE_MAX} 個` : '＋ 存目前座標';
   }
 
-  function savePlaces(next) {
-    try {
-      chrome.storage.local.set({ places: next }, () => {
-        if (chrome.runtime.lastError) {
-          say('地點儲存失敗:' + chrome.runtime.lastError.message, true);
-          return;
-        }
-        places = next;
-        renderPlaces();
-      });
-    } catch (err) {
-      console.error('[geo-mock] popup 儲存地點失敗:', err);
-      say('地點儲存失敗:' + err.message, true);
-    }
+  // 收 updater 函式而不是現成的陣列，而且把寫入串成鏈：連續刪兩個 chip 時，
+  // 第二次要等第一次寫完、`places` 更新過了才算新陣列。兩次都從同一份舊
+  // `places` 扣的話，先刪掉的那個會復活。
+  let placeWrites = Promise.resolve();
+
+  function savePlaces(update) {
+    placeWrites = placeWrites.then(() => new Promise((done) => {
+      const next = update(places);
+      // UI 已經把新增鈕 disable 掉了，這裡是收口 —— 日後多一個寫入端
+      // （匯入、同步）就不會靜靜地突破上限。
+      if (next.length > PLACE_MAX) { done(); return; }
+      try {
+        chrome.storage.local.set({ places: next }, () => {
+          if (chrome.runtime.lastError) {
+            say('地點儲存失敗:' + chrome.runtime.lastError.message, true);
+          } else {
+            places = next;
+            renderPlaces();
+          }
+          done();
+        });
+      } catch (err) {
+        console.error('[geo-mock] popup 儲存地點失敗:', err);
+        say('地點儲存失敗:' + err.message, true);
+        done();
+      }
+    }));
+  }
+
+  // 不用 prompt()：在 extension popup 裡不可靠（會連 popup 一起關掉），
+  // 所以是行內表單，開與關要成對維護。
+  function openPlaceForm() {
+    el.placeForm.hidden = false;
+    el.addPlace.hidden = true;
+    el.placeName.value = '';
+    el.placeName.focus();
   }
 
   function closePlaceForm() {
@@ -283,14 +318,7 @@
     el.addPlace.hidden = false;
   }
 
-  // 不用 prompt()：在 extension popup 裡不可靠（會連 popup 一起關掉）
-  el.addPlace.addEventListener('click', () => {
-    el.placeForm.hidden = false;
-    el.addPlace.hidden = true;
-    el.placeName.value = '';
-    el.placeName.focus();
-  });
-
+  el.addPlace.addEventListener('click', openPlaceForm);
   el.cancelPlace.addEventListener('click', closePlaceForm);
 
   el.placeForm.addEventListener('submit', (e) => {
@@ -301,7 +329,7 @@
       say('還沒讀到目前座標，等一下再試', true);
       return;
     }
-    savePlaces([...places, { label, lat: current.lat, lng: current.lng }]);
+    savePlaces((list) => [...list, { label, lat: current.lat, lng: current.lng }]);
     closePlaceForm();
   });
 

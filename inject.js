@@ -92,9 +92,15 @@
     // 極點附近 cos 會趨近 0，除下去會炸出天文數字的經度偏移。
     // 夾一個下限，寧可在極圈內抖得比設定值窄，也不要吐出無意義的座標。
     const shrink = Math.max(Math.cos((s.lat * Math.PI) / 180), 1e-6);
+    const lat = s.lat + (dist * Math.cos(angle)) / METERS_PER_DEGREE;
+    const lng = s.lng + (dist * Math.sin(angle)) / (METERS_PER_DEGREE * shrink);
+
+    // options 頁擋掉了超出 ±90 / ±180 的座標，抖動不該從後門把它們放回去。
+    // 中心點設在極點或換日線附近、或半徑打錯多按幾個零時就會撞到。
+    // 緯度夾住、經度繞回去（先取模再平移，直接 +540 對很大的負數會繞錯）。
     return {
-      lat: s.lat + (dist * Math.cos(angle)) / METERS_PER_DEGREE,
-      lng: s.lng + (dist * Math.sin(angle)) / (METERS_PER_DEGREE * shrink),
+      lat: Math.min(90, Math.max(-90, lat)),
+      lng: (((lng % 360) + 540) % 360) - 180,
     };
   }
 

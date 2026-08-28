@@ -19,12 +19,13 @@ const os = require('os');
 const EXT_DIR = path.resolve(__dirname, '..');
 const FIXTURES = path.join(__dirname, 'fixtures');
 const PORT = Number(process.env.PORT) || 0;
-const EXPECTED_ASSERTIONS = 9;
+const EXPECTED_ASSERTIONS = 10;
 const SHOTS = path.join(EXT_DIR, '.screenshots');
 const MOVED = { lat: 35.6812, lng: 139.7671, accuracy: 55 };   // 東京車站 —— 刻意挑一組非預設值
 const LIVE = { lat: 48.8584, lng: 2.2945, accuracy: 12 };      // 巴黎鐵塔 —— 驗即時推送用的第二組
 const JITTER_RADIUS = 100;                                     // 公尺，驗 jitter 用
 const JITTER_SAMPLES = 8;
+const SECRET_PLACE = { label: '祕密地點', lat: 12.34, lng: 56.78 };   // 驗它不會外流
 // Google Maps 右鍵複製出來的原始格式，位數刻意留滿，確認不會被截斷
 const PASTED = '24.262246621321527, 120.62450392661896';
 const PASTED_LAT = '24.262246621321527';
@@ -298,6 +299,8 @@ async function cleanup({ ctx, profile }) {
 
       await ext.goto(`chrome-extension://${extId}/options.html`);
 
+      await ext.waitForFunction(() => document.getElementById('lat').value !== '');
+
       // 4) 貼上欄：Google Maps 的「緯度, 經度」一整串要能拆進兩個數字欄
       await ext.fill('#paste', PASTED);
       const split = await ext.evaluate(() => ({
@@ -382,6 +385,10 @@ async function cleanup({ ctx, profile }) {
 
       // 7) jitter 模式：以設定的座標為中心抖動（SPEC 第二版第 7 項）
       await ext.goto(`chrome-extension://${extId}/options.html`);
+      // 等 options.js 那個非同步 get 把欄位回填完再動手。搶在它前面填的話，
+      // 回填會把值蓋回舊的 —— 第 5、6 項撞到這個會紅燈（座標對不上），
+      // 但這一項只會**靜默變弱**：半徑被蓋回 50，斷言仍在驗 max <= 100，恆真。
+      await ext.waitForFunction(() => document.getElementById('jitterRadius').value !== '');
       await ext.fill('#jitterRadius', String(JITTER_RADIUS));
       await ext.evaluate(() => { document.getElementById('status').className = ''; });
       await ext.click('button[type=submit]');
@@ -391,27 +398,30 @@ async function cleanup({ ctx, profile }) {
       await ext.check('#modeJitter');
 
       // 一樣不重整測試頁 —— 模式切換也要靠即時推送過去
-      const jitter = await page.evaluate(async ({ center, radius, n }) => {
+      const jitter = await page.evaluate(async ({ center, n }) => {
+        const ASK_TIMEOUT_MS = 3000;    // 單次 getCurrentPosition 的上限
+        const DEADLINE_MS = 3000;       // 等模式推送到達的上限（與上面同值但意義不同，別合併）
+        const POLL_MS = 50;
         const ask = () => new Promise(res => navigator.geolocation.getCurrentPosition(
           p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
           () => res(null),
-          { timeout: 3000 }
+          { timeout: ASK_TIMEOUT_MS }
         ));
         // 小範圍用平面近似算距離就夠，差幾公分不影響這個斷言
         const metersFrom = (p) => {
-          const M = 111320;
-          const dy = (p.lat - center.lat) * M;
-          const dx = (p.lng - center.lng) * M * Math.cos((center.lat * Math.PI) / 180);
+          const METERS_PER_DEGREE = 111320;
+          const dy = (p.lat - center.lat) * METERS_PER_DEGREE;
+          const dx = (p.lng - center.lng) * METERS_PER_DEGREE * Math.cos((center.lat * Math.PI) / 180);
           return Math.hypot(dx, dy);
         };
 
         // 等模式推送到達：抖起來之後座標就不再正好等於中心點
         const t0 = Date.now();
         let on = false;
-        while (Date.now() - t0 < 3000 && !on) {
+        while (!on && Date.now() - t0 < DEADLINE_MS) {
           const p = await ask();
           if (p && metersFrom(p) > 0) on = true;
-          else await new Promise(r => setTimeout(r, 50));
+          else await new Promise(r => setTimeout(r, POLL_MS));
         }
 
         const samples = [];
@@ -422,18 +432,54 @@ async function cleanup({ ctx, profile }) {
           max: Math.max(...samples.map(metersFrom)),
           distinct: new Set(samples.map(p => `${p.lat},${p.lng}`)).size,
         };
-      }, { center: LIVE, radius: JITTER_RADIUS, n: JITTER_SAMPLES });
+      }, { center: LIVE, n: JITTER_SAMPLES });
       console.log('jitter 取樣            : ' + JSON.stringify(jitter));
-      // 三件事一起驗：真的抖了、沒抖出半徑、每次都不一樣。
-      // 少了「每次不一樣」的話，「只在切換模式時抖一次然後固定住」也會綠燈。
+      // 四件事一起驗：真的抖了、沒抖出半徑、抖得夠開、每次都不一樣。
+      //   ·「每次不一樣」少了的話，「只在切換模式時抖一次然後固定住」會綠燈
+      //   ·「抖得夠開」（下界）少了的話，半徑被誤設成更小的值也會綠燈 ——
+      //     8 個圓盤均勻樣本全落在半徑一半內的機率是 0.25^8 ≈ 1.5e-5，不會 flake
       results.push(['jitter 以設定座標為中心抖動',
-        !!jitter.on && !jitter.failed
-        && jitter.max <= JITTER_RADIUS && jitter.distinct >= 2]);
+        jitter.on && !jitter.failed
+        && jitter.max <= JITTER_RADIUS && jitter.max > JITTER_RADIUS / 2
+        && jitter.distinct >= 2]);
 
-      // 改回 fixed，下一項才是在測「開關關掉」而不是順便測到模式
-      await ext.evaluate(() => chrome.storage.local.set({ mode: 'fixed' }));
+      // 改回 fixed，下一項才是在測「開關關掉」而不是順便測到模式。
+      // 要等 callback —— 不等的話這個寫入可能在下一行導航時掉了，
+      // 註解宣稱的事就沒真的成立（第 8 項看的是 console 痕跡，不會因此變紅）。
+      await ext.evaluate(() => new Promise(r => chrome.storage.local.set({ mode: 'fixed' }, r)));
 
-      // 8) Popup 開關關掉 → 不再覆寫。第 2～7 項全在測「開啟」狀態，
+      // 8) 推送的內容不含已存地點。
+      //
+      // 這個 CustomEvent 頁面自己的 JS 監聽得到（CLAUDE.md「已知限制」），
+      // 所以推送內容必須只有 inject.js 真正要用的那幾個鍵。少了 bridge.js 的
+      // pick() 過濾，使用者自己命名的地點簿連同精確座標會被每個網站讀走 ——
+      // 而且功能完全正常，沒有任何症狀，只有這一項擋得住那種回退。
+      await page.evaluate(() => {
+        window.__pushed = [];
+        document.addEventListener('geo-mock:settings', (e) => window.__pushed.push(e.detail));
+      });
+
+      // 存一個地點：places 在 NOT_WATCHED 裡，這個寫入不該觸發任何推送
+      await ext.evaluate((place) => new Promise(r =>
+        chrome.storage.local.set({ places: [place] }, r)), SECRET_PLACE);
+      await page.waitForTimeout(500);
+      const pushedByPlaces = await page.evaluate(() => window.__pushed.length);
+
+      // 再改一個真的該推送的鍵，看那則推送裡有什麼
+      await ext.evaluate(() => new Promise(r => chrome.storage.local.set({ accuracy: 33 }, r)));
+      await page.waitForFunction(() => window.__pushed.length > 0, { timeout: 3000 })
+        .catch(() => { /* 沒推送的話下面的斷言自然會紅 */ });
+      const leak = await page.evaluate(() => window.__pushed.at(-1) || '');
+      let pushedKeys = [];
+      try { pushedKeys = Object.keys(JSON.parse(leak).settings || {}); } catch { /* 下面會紅 */ }
+      console.log('推送內容的鍵        : ' + JSON.stringify(pushedKeys)
+        + `  places 變動觸發的推送次數: ${pushedByPlaces}`);
+      results.push(['推送內容不含已存地點',
+        pushedByPlaces === 0
+        && pushedKeys.length > 0 && !pushedKeys.includes('places')
+        && !leak.includes(SECRET_PLACE.label)]);
+
+      // 9) Popup 開關關掉 → 不再覆寫。第 2～7 項全在測「開啟」狀態，
       //    enabled: false 這條路徑到這裡才第一次被驗到。
       await ext.goto(`chrome-extension://${extId}/popup.html`);
       // 開關的 CSS transition 是 .15s。不等它跑完就截圖，拍到的是過渡中間狀態 ——
@@ -476,7 +522,7 @@ async function cleanup({ ctx, profile }) {
       await cleanup(a);
     }
 
-    // 9) 失敗情境：設定永遠送不到，排隊必須有出口
+    // 10) 失敗情境：設定永遠送不到，排隊必須有出口
     noBridgeDir = makeNoBridgeVariant();
     const b = await launch(chromium, executablePath, noBridgeDir);
     try {
