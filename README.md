@@ -45,7 +45,7 @@ iframe 支援。見 [SPEC.md](SPEC.md) 的實作優先順序。
 ## 開發
 
 ```bash
-node tools/verify.js        # exit 0 = 六項斷言全過
+node tools/verify.js        # exit 0 = 七項斷言全過
 ```
 
 需要 playwright 與 Chrome for Testing（**系統的 Chrome stable 不行**，

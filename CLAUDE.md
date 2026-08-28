@@ -40,9 +40,14 @@ geo-mock/
   `defaults.js` 必須排在前面。順序反了或檔案漏掉，`bridge.js` 會拿不到
   `GEO_MOCK_DEFAULTS`；那條路徑現在會 `console.error` 並退回真實定位，不會靜默失效
 - `manifest.json` 需 `host_permissions: ["https://nominatim.openstreetmap.org/*"]`
-- **Nominatim 的 User-Agent 只能靠 `declarativeNetRequest` 改**：`fetch` 設不了這個
+- **Nominatim 的 User-Agent 只能靠 declarativeNetRequest 改**：`fetch` 設不了這個
   header（瀏覽器禁止），擴充頁也不送 `Referer`，兩條識別路徑都空的。`rules.json` 的
-  靜態規則在網路層改寫，實測有效（見 SPEC.md）。刪掉那條規則 = 直接違反政策
+  靜態規則在網路層改寫，實測有效（見 SPEC.md）。刪掉那條規則 = 直接違反政策。
+  權限用 `declarativeNetRequestWithHostAccess` 而非 `declarativeNetRequest`：
+  兩者對這條規則的效果實測相同（都改得到），但後者會在安裝時多跳一個權限警告，
+  而規則只作用在已有 host permission 的網域上，付那個代價換不到任何能力。
+  **改動這裡務必用 CDP 的 `requestWillBeSentExtraInfo` 重驗**——DNR 規則失效是
+  靜默的，沒有 console 錯誤，搜尋照樣有結果
 
 ## 不要做的事
 
@@ -113,6 +118,12 @@ geo-mock/
   同樣屬 SPEC 陷阱 4 的範圍，第三版再處理。
 - **設定送不到時最壞花掉呼叫端 timeout 的兩倍**：見 `inject.js` 逾時分支的註解。
   極端路徑，正常情況設定 20ms 內就到。
+- **popup 中途關閉會造成一次重複查詢**：`gate()` 在送出前就把時間戳寫進 storage
+  （所以速率閘門跨 popup 開關有效），但快取要等結果回來才寫。搜尋途中點到 popup 外面
+  → 環境銷毀 → 結果沒進快取；重開再查同一個字串就是第二次相同請求，正是 Nominatim
+  政策列為 faulty client 的行為。使用者沒有任何線索知道這件事發生了。
+  結構性的解法是把 fetch 移到 service worker（popup 關閉不影響），這個擴充目前
+  沒有 service worker，屬第三版範圍。
 - **預設 `enabled: true`，裝上就對所有網站生效**。task 3 加了 popup 開關之後重新
   檢討過，決定維持開啟：載入未封裝擴充本身就是明確的開發意圖，再要求「裝完還要
   手動打開」對開發工具是多餘的一步。代價是忘了關的話每個網站都在回報設定座標，

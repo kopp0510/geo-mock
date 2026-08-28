@@ -16,23 +16,33 @@ manifest.json 沒有引用它們，Chrome 也不會載入。
 node tools/verify.js        # exit 0 = 全部通過
 ```
 
-六項斷言：
+七項斷言（第 1 項純靜態，其餘要開瀏覽器）：
 
-1. 定位覆寫生效（載入後呼叫 → 回傳 `defaults.js` 的座標）
-2. 設定未達時的請求排隊（`document_start` 搶先呼叫 → 被壓住十幾 ms 後正確回應）
-3. 貼上「緯度, 經度」會拆進兩欄（Google Maps 右鍵複製的格式，位數留滿確認不被截斷）
-4. Options 頁存的座標會生效（存一組非預設值 → content script 讀到新值，
+1. **改寫 User-Agent 的 DNR 規則沒有壞掉**（`checkUaRule()`，只讀檔不送請求）。
+   Nominatim 政策要求可識別的 UA，而這條規則壞掉是靜默的 —— 規則檔被刪、`enabled`
+   被改 false、權限被拿掉、`urlFilter` 被放寬到整個 openstreetmap.org、或 UA 的版本號
+   跟 manifest 脫鉤，搜尋照樣有結果，要到被封鎖那天才會發現。**版本號那項是刻意的
+   同步閘門**：`rules.json` 的 UA 是手抄的版本號（靜態規則讀不到 manifest），只改
+   manifest 升版這裡就會紅
+2. 定位覆寫生效（載入後呼叫 → 回傳 `defaults.js` 的座標）
+3. 設定未達時的請求排隊（`document_start` 搶先呼叫 → 被壓住十幾 ms 後正確回應）
+4. 貼上「緯度, 經度」會拆進兩欄（Google Maps 右鍵複製的格式，位數留滿確認不被截斷）
+5. Options 頁存的座標會生效（存一組非預設值 → content script 讀到新值，
    lat/lng/accuracy 都驗；順帶截圖到 `.screenshots/options.png`）
-5. 關掉開關後不再覆寫（經 popup 取消勾選 → 重新載入測試頁）。前四項全在測
+6. 關掉開關後不再覆寫（經 popup 取消勾選 → 重新載入測試頁）。第 2～5 項全在測
    「開啟」狀態，`enabled: false` 這條路徑只有這一項驗得到。斷言看的是
    `inject.js` 有沒有印出覆寫痕跡，不是比對座標數值 —— 只比座標的話，
    「停用分支誤送預設值」這種迴歸會綠燈放行
-6. 設定永不到達時仍會回應（腳本會即時造一個「只有 inject.js、沒有 bridge.js」的
+7. 設定永不到達時仍會回應（腳本會即時造一個「只有 inject.js、沒有 bridge.js」的
    擴充變體來複現這個失敗模式；修正前這裡會永久懸掛）
 
-第 3～5 項需要 extension id，靠讀 `chrome://extensions` 的 shadow DOM 取得
+**為什麼不驗地址搜尋**：Nominatim 政策明文禁止自動化的重複查詢，跑一次 CI 就打一次
+別人捐的伺服器。搜尋功能只做手動驗證（見下方「手動測試」）；能靜態比對的部分
+（第 1 項）才進斷言。
+
+第 4～6 項需要 extension id，靠讀 `chrome://extensions` 的 shadow DOM 取得
 （這個擴充沒有 service worker，沒有更現成的路徑）。**這條路徑綁死 Chrome 內部 UI
-的自訂元素名稱，Chrome 改版重構就會斷** —— 斷掉時的症狀是第 3 項拋例外，
+的自訂元素名稱，Chrome 改版重構就會斷** —— 斷掉時的症狀是第 4 項拋例外，
 不會誤判成 PASS。
 
 `makeNoBridgeVariant()` 用**白名單**組變體 manifest，不是「複製全部再刪掉不要的」。
@@ -80,3 +90,7 @@ python3 -m http.server 8000 -d tools/fixtures
 **改預設座標只要改 `defaults.js` 那一份**，這裡不必動。
 
 （早期版本這裡是手抄副本，需要兩邊同步；那個陷阱已經拆掉了，別再裝回去。）
+
+`rules.json` 的 User-Agent 就沒這麼好運 —— 靜態 DNR 規則讀不到 manifest，版本號只能
+手抄。拆不掉的副本就用斷言看著：第 1 項會比對 UA 是否含 `manifest.json` 的 `version`，
+升版忘了同步就會紅。

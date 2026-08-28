@@ -69,9 +69,18 @@ Chrome 根本不替擴充頁的 fetch 送這個 header。等於兩條識別路�
 實測用 CDP 的 `Network.requestWillBeSentExtraInfo` 看實際上線的 header，確認是改寫
 後的值，不是 Chrome 預設 UA。
 
-副作用：規則以網址比對（`||nominatim.openstreetmap.org/` 的 XHR），所以使用者自己
-開著 Nominatim 網頁時，那頁的 XHR 也會帶上這個 UA。影響極小，但**別把規則範圍放寬到
-整個 openstreetmap.org**。
+規則的範圍要看緊。`||nominatim.openstreetmap.org/` 這個 domain anchor **連子網域一起吃、
+也不限 scheme**，涵蓋面比字面上寬。更要緊的是被改寫的東西是「身分」本身：使用者自己
+在 OSM 站上操作時，那些請求若也被冠上 `geo-mock/…`，OSMF 依 UA 限流或封鎖時擋到的是
+我們 —— 為我們沒送過的流量。所以規則加了
+`excludedInitiatorDomains: ["openstreetmap.org"]`，兩面都實測過：
+
+- 擴充 popup 送出的請求 → 仍改寫成 `geo-mock/0.1.0`（擴充頁沒有 initiator domain，
+  不會被這條排除誤傷）
+- 從 `www.openstreetmap.org` 頁面送出的請求 → 保留瀏覽器原本的 UA，沒被冒名
+
+**別把規則範圍放寬到整個 openstreetmap.org。** `tools/verify.js` 第 1 項會靜態擋下
+這種放寬，以及規則被刪、被停用、UA 版本號與 manifest 脫鉤。
 
 若日後仍被擋，改用有 API key 的服務（LocationIQ / Mapbox / Google Geocoding）——
 `geocode.js` 是唯一送出請求的地方，換服務只動那一支。

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "開發用的定位覆寫工具：讓瀏覽器對任何網站回報指定的 GPS 座標。",
   "minimum_chrome_version": "111",
-  "permissions": ["storage", "declarativeNetRequest"],
+  "permissions": ["storage", "declarativeNetRequestWithHostAccess"],
   "host_permissions": ["https://nominatim.openstreetmap.org/*"],
   "declarative_net_request": {
     "rule_resources": [

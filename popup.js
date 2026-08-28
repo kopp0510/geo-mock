@@ -90,6 +90,14 @@
     el.results.hidden = true;
   }
 
+  // 收掉畫面上對不上的候選，並讓還在路上的那發結果作廢。
+  // 這兩件事一定要一起做：少了 seq++，回來的結果會把剛清掉的清單畫回去。
+  // 三個呼叫端（改字、套用、查詢失敗）差別只在之後顯示什麼訊息。
+  function invalidate() {
+    seq++;
+    clearResults();
+  }
+
   function apply(place) {
     try {
       chrome.storage.local.set({ lat: place.lat, lng: place.lng }, () => {
@@ -98,9 +106,8 @@
           return;
         }
         showCoords({ lat: place.lat, lng: place.lng });
-        clearResults();
-        el.q.value = '';
-        seq++;                     // 還在路上的那發結果作廢，別讓清單自己跳回來
+        invalidate();
+        el.q.value = '';           // 程式賦值不會觸發 input，訊息不會被洗掉
         say('已套用，重新整理目標分頁即生效');
       });
     } catch (err) {
@@ -142,7 +149,7 @@
     }).catch((err) => {
       if (mine !== seq) return;
       console.error('[geo-mock] 地址搜尋失敗:', err);
-      clearResults();
+      invalidate();
       say('搜尋失敗:' + err.message, true);
     });
   }
@@ -153,11 +160,9 @@
     run(q);
   }
 
-  // 改字之後畫面上那份候選就對不上輸入框了，先清掉；
-  // seq++ 讓還在路上的那發結果作廢，否則它回來會把清掉的清單畫回去。
+  // 改字之後畫面上那份候選就對不上輸入框了。
   el.q.addEventListener('input', () => {
-    seq++;
-    clearResults();
+    invalidate();
     say('');
   });
 

@@ -14,7 +14,8 @@
     },
     "condition": {
       "urlFilter": "||nominatim.openstreetmap.org/",
-      "resourceTypes": ["xmlhttprequest"]
+      "resourceTypes": ["xmlhttprequest"],
+      "excludedInitiatorDomains": ["openstreetmap.org"]
     }
   }
 ]

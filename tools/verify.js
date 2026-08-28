@@ -19,7 +19,7 @@ const os = require('os');
 const EXT_DIR = path.resolve(__dirname, '..');
 const FIXTURES = path.join(__dirname, 'fixtures');
 const PORT = Number(process.env.PORT) || 0;
-const EXPECTED_ASSERTIONS = 6;
+const EXPECTED_ASSERTIONS = 7;
 const SHOTS = path.join(EXT_DIR, '.screenshots');
 const MOVED = { lat: 35.6812, lng: 139.7671, accuracy: 55 };   // 東京車站 —— 刻意挑一組非預設值
 // Google Maps 右鍵複製出來的原始格式，位數刻意留滿，確認不會被截斷
@@ -112,6 +112,53 @@ function startServer() {
   });
 }
 
+// 純靜態檢查：改寫 User-Agent 的 DNR 規則有沒有好好待在原地。
+//
+// 這條規則是 Nominatim 唯一認得出這個應用的線索（政策硬要求，見 SPEC.md），
+// 而它壞掉是**靜默的**：規則檔被刪、enabled 被改 false、權限被拿掉、或 UA 的
+// 版本號跟 manifest 脫鉤 —— 搜尋照樣有結果，要到被封鎖那天才會發現。
+//
+// 刻意只讀檔比對，不送任何請求：自動化打 Nominatim 正是政策明文禁止的
+// （見 tools/CLAUDE.md「為什麼不驗地址搜尋」）。
+// 回傳 null 表示通過，回傳字串表示哪裡不對。
+function checkUaRule() {
+  const mf = JSON.parse(fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf8'));
+
+  if (!(mf.permissions || []).some(p => p.startsWith('declarativeNetRequest'))) {
+    return 'manifest 少了 declarativeNetRequest 系列權限，規則不會生效';
+  }
+
+  const enabled = ((mf.declarative_net_request || {}).rule_resources || [])
+    .filter(r => r.enabled);
+  if (enabled.length !== 1) {
+    return `manifest 的 rule_resources 應該剛好一筆 enabled，實際 ${enabled.length} 筆`;
+  }
+
+  const rulePath = path.join(EXT_DIR, enabled[0].path);
+  if (!fs.existsSync(rulePath)) return '規則檔不存在:' + enabled[0].path;
+  const rules = JSON.parse(fs.readFileSync(rulePath, 'utf8'));
+
+  const ua = rules
+    .flatMap(r => ((r.action || {}).requestHeaders) || [])
+    .find(h => h.header.toLowerCase() === 'user-agent');
+  if (!ua) return '規則檔裡沒有改寫 user-agent 的項目';
+  if (ua.operation !== 'set') return 'user-agent 的 operation 應該是 set，實際 ' + ua.operation;
+  // 版本號是手抄進 rules.json 的，靜態規則讀不到 manifest。這行就是那道同步閘門：
+  // 升版只改 manifest 的話，這裡會紅，提醒你 rules.json 也要動。
+  if (!ua.value.includes(mf.version)) {
+    return `UA「${ua.value}」沒帶上 manifest 的版本 ${mf.version} —— 升版時兩邊要一起改`;
+  }
+
+  // 範圍不能放寬：規則若涵蓋整個 openstreetmap.org，使用者自己瀏覽 OSM 時
+  // 送出的請求也會被冠上 geo-mock 的名字，被限流的是我們（見 SPEC.md）。
+  const tooWide = rules
+    .map(r => (r.condition || {}).urlFilter || '')
+    .filter(f => !f.includes('nominatim.openstreetmap.org'));
+  if (tooWide.length) return '規則的 urlFilter 超出 nominatim:' + tooWide.join(', ');
+
+  return null;
+}
+
 // 造一個「只有 inject.js、沒有 bridge.js」的擴充變體，用來複現
 // 「設定永遠送不到」這個失敗模式（bridge 的 storage 讀取出錯、或擴充在
 // 頁面載入途中被 reload）。修好之前，這個情境會讓呼叫端永久懸掛。
@@ -180,6 +227,11 @@ async function cleanup({ ctx, profile }) {
   let noBridgeDir = '';
 
   try {
+    // ── 靜態檢查：不開瀏覽器、不送請求 ──────────────────────
+    const uaProblem = checkUaRule();
+    console.log('UA 改寫規則         : ' + (uaProblem || '設定完整'));
+    results.push(['Nominatim 的 UA 改寫規則沒有壞掉（靜態）', uaProblem === null]);
+
     // ── 正常情境：擴充完整載入 ──────────────────────────────
     const a = await launch(chromium, executablePath, EXT_DIR);
     try {

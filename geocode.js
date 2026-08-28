@@ -90,18 +90,26 @@ const GEO_MOCK_GEOCODE = (() => {
     const url = `${ENDPOINT}?format=jsonv2&limit=${LIMIT}`
       + `&accept-language=zh-TW&q=${encodeURIComponent(query)}`;
 
-    let res;
+    // 讀 body 也要包在 try 裡：captive portal／公司 proxy 會回一頁 HTML，
+    // 那時炸的是 res.json() 而不是 fetch，漏在外面的話使用者會看到
+    // 「搜尋失敗:Unexpected token '<'」。逾時也可能發生在 body 還在讀的階段。
+    let raw;
     try {
-      res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+      // 帶 cause 標記，好讓下面的 catch 認出「連得上、但對方回了錯誤碼」，
+      // 不要把它一併翻譯成「連不上」。
+      if (!res.ok) throw new Error(`Nominatim 回應 ${res.status}`, { cause: 'http' });
+      raw = await res.json();
     } catch (err) {
-      // 逾時或斷線。原始錯誤是英文的 TimeoutError／TypeError，
-      // 直接丟給使用者看沒有意義，但也不能整個吞掉。
+      // 原始錯誤是英文的 TimeoutError／SyntaxError／TypeError，直接丟給使用者
+      // 看沒有意義；但也不能整個吞掉，留一份原文在 console。
       console.error('[geo-mock] Nominatim 請求失敗:', err);
-      throw new Error(err.name === 'TimeoutError' ? '連線逾時' : '連不上 Nominatim');
+      if (err.cause === 'http') throw err;
+      if (err.name === 'TimeoutError' || err.name === 'AbortError') throw new Error('連線逾時');
+      if (err.name === 'SyntaxError') throw new Error('Nominatim 回應不是有效的 JSON');
+      throw new Error('連不上 Nominatim');
     }
-    if (!res.ok) throw new Error(`Nominatim 回應 ${res.status}`);
 
-    const raw = await res.json();
     // 正常是一個陣列。擋掉錯誤物件之類的回應，否則錯誤訊息會變成
     // 「raw.map is not a function」，對使用者毫無意義。
     if (!Array.isArray(raw)) throw new Error('Nominatim 回應格式不符預期');
