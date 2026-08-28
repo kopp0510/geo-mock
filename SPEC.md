@@ -1,33 +1,14 @@
 # Geo Mock — Chrome 擴充規格
 
+> 架構約束、檔案結構、已知實作陷阱、「不要做的事」已移至 [CLAUDE.md](CLAUDE.md)。
+> 本檔只放規格本體：功能行為、介面版面、外部服務政策、實作順序。
+
 ## 目的
 
 開發用的定位覆寫工具。開發者輸入地址或選擇已存地點，讓瀏覽器對任何網站回報指定的
 GPS 座標，用來檢視系統在不同區域的呈現結果。
 
 通用工具，不綁特定網站。
-
-## 技術決策（已確定，不需重新討論）
-
-- Manifest V3，純原生 JS，不用 build 工具、不用框架
-- 覆寫對象是 `navigator.geolocation`，必須跑在頁面自己的 JS 環境
-- 兩個 content script：
-  - `inject.js` — `world: MAIN`, `run_at: document_start`，做實際覆寫
-  - `bridge.js` — `world: ISOLATED`, `run_at: document_start`，讀 `chrome.storage`
-    並透過 CustomEvent 推給 inject.js（MAIN world 拿不到 chrome.storage）
-- `world` 寫在 manifest 的 content_scripts 需要 Chrome 111+
-
-## 檔案結構
-
-```
-geo-mock/
-├─ manifest.json
-├─ inject.js
-├─ bridge.js
-├─ popup.html / popup.js
-├─ options.html / options.js
-└─ icons/16.png 48.png 128.png
-```
 
 ## 三種模式
 
@@ -69,8 +50,6 @@ Options 頁放不常改的欄位：altitude、altitudeAccuracy、heading、speed
 是 `chrome-extension://<id>`。這是否符合 Nominatim 的識別要求尚未確認。實作時先驗證，
 若被擋則改用有 API key 的服務（LocationIQ / Mapbox / Google Geocoding）。
 
-`manifest.json` 需要 `host_permissions: ["https://nominatim.openstreetmap.org/"]`。
-
 ## 實作優先順序
 
 **第一版（先做到能跑）**
@@ -89,23 +68,3 @@ Options 頁放不常改的欄位：altitude、altitudeAccuracy、heading、speed
 9. `navigator.permissions.query` 覆寫成 granted
 10. `all_frames: true` 支援 iframe
 11. per-site 白名單
-
-## 已知的實作陷阱
-
-1. **時序**：`chrome.storage.local.get` 是非同步，頁面可能在設定送達前就呼叫定位 API。
-   inject.js 要把請求排隊，等設定到達再回應。這段不能省。
-
-2. **`watchPosition` 必須同步回傳 watch id**，不能等設定載入才回。自己維護計數器當 id，
-   再用 `setInterval` 定期送位置。
-
-3. **`navigator.permissions.query({name:'geolocation'})`** — 有些網站先查權限，看到
-   prompt 就不呼叫定位了。可能需要一併覆寫。
-
-4. **回傳的是普通物件**，不是真的 `GeolocationPosition`。少數網站會檢查 prototype
-   或 `instanceof`。第三版再處理。
-
-## 不要做的事
-
-- 不要引入 build 工具、TypeScript、React
-- 不要在第一版就做地圖 picker（Leaflet 要打包進擴充，體積和複雜度大一個量級）
-- 不要為了通用性預先實作沒撞到的相容處理
