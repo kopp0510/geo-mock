@@ -14,7 +14,10 @@
   // 半徑沒有上限的話，多按幾個零就會讓抖動算出跨半個地球的座標。
   // inject.js 那邊會夾回合法範圍，但使用者看到的行為會很莫名。
   const JITTER_MAX = 100000;   // 公尺
-  const el = Object.fromEntries(FIELDS.map(k => [k, document.getElementById(k)]));
+  const el = Object.fromEntries(
+    [...FIELDS, 'siteList', 'sitesEmpty', 'siteInput', 'addSite']
+      .map(k => [k, document.getElementById(k)])
+  );
   const form = document.getElementById('form');
   const status = document.getElementById('status');
 
@@ -49,15 +52,78 @@
     applyAll();
 
     for (const k of FIELDS) el[k].value = saved[k];
+    renderSites(saved.excludedSites);
+  });
+
+  // ── 排除清單 ────────────────────────────────────────────────
+  // 跟上面那些欄位不同，這裡是**即時存**的：加一個網站不必再按儲存，
+  // 因為 popup 那顆「這個網站不要覆寫」也是即時的，兩邊行為要一致。
+  let sites = [];
+
+  function renderSites(list) {
+    sites = Array.isArray(list) ? list : [];
+    el.sitesEmpty.hidden = sites.length > 0;
+    el.siteList.replaceChildren(...sites.map((site) => {
+      const name = document.createElement('code');
+      name.textContent = site;            // 使用者輸入，一律 textContent
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = '×';
+      remove.title = t('deletePlace');
+      remove.setAttribute('aria-label', t('deletePlaceLabel', site));
+      remove.addEventListener('click', () => saveSites(sites.filter((s) => s !== site)));
+
+      const li = document.createElement('li');
+      li.append(name, remove);
+      return li;
+    }));
+  }
+
+  function saveSites(next) {
+    try {
+      chrome.storage.local.set({ excludedSites: next }, () => {
+        if (chrome.runtime.lastError) {
+          say(t('saveFailed', chrome.runtime.lastError.message), 'err');
+          return;
+        }
+        renderSites(next);
+        say('', '');
+      });
+    } catch (err) {
+      console.error('[geo-mock] options 儲存排除清單失敗:', err);
+      say(t('saveFailed', err.message), 'err');
+    }
+  }
+
+  function addSite() {
+    // 使用者可能整串網址貼進來，normalize 會收斂成 host（含埠號）
+    const site = GEO_MOCK_SITES.normalize(el.siteInput.value);
+    if (!site) { say(t('badSite'), 'err'); el.siteInput.focus(); return; }
+    if (sites.includes(site)) { say(t('siteAlready'), 'err'); el.siteInput.focus(); return; }
+    el.siteInput.value = '';
+    saveSites([...sites, site]);
+  }
+
+  el.addSite.addEventListener('click', addSite);
+  el.siteInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    e.preventDefault();
+    addSite();
   });
 
   // popup 換語言時這一頁可能正開著。沒有這個監聽的話它會停在舊語言直到重新載入，
   // 而 README 寫的是「選了立刻換」。locale 以外的鍵不用管 —— 這頁的欄位值
   // 只在載入時讀一次，使用者正在編輯時被外部改動蓋掉才更糟。
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !changes.locale) return;
-    GEO_MOCK_I18N.setLocale(changes.locale.newValue);
-    applyAll();
+    if (area !== 'local') return;
+    if (changes.locale) {
+      GEO_MOCK_I18N.setLocale(changes.locale.newValue);
+      applyAll();
+      renderSites(sites);   // 刪除鈕的 aria-label 也要跟著換語言
+    }
+    // popup 那顆「這個網站不要覆寫」會改同一份清單，開著這頁時要跟上
+    if (changes.excludedSites) renderSites(changes.excludedSites.newValue);
   });
 
   // Google Maps 右鍵複製出來的是「緯度, 經度」一整串，

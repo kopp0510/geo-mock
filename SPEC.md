@@ -146,4 +146,10 @@ Chrome 根本不替擴充頁的 fetch 送這個 header。等於兩條識別路�
    位置，結果 `getCurrentPosition` 走原生跳出授權對話框
 10. `all_frames: true` 支援 iframe —— **已做**，兩個 content script 都要加。
     沒加的症狀是「主頁面正常、嵌在裡面的地圖顯示真實位置」
-11. per-site 白名單
+11. per-site 排除清單 —— **已做**。刻意不叫黑／白名單：這裡不是在擋誰，
+    只是「這幾個站別動」。**預設空的**，所以裝上之後的行為跟以前一樣（全部生效）；
+    列進清單的網站走真實定位，其餘照常覆寫。比對 `location.host`（**含埠號**，
+    開發場景一定會用到 `localhost:3000`），`*.example.com` 只吃子網域。
+    規則放在 `sites.js`，content script 與擴充頁共用一份。
+    清單本身**不送進 MAIN world** —— 那是一份使用者關心哪些網站的清單，
+    頁面讀得到就等於白送一份瀏覽偏好（見 `bridge.js` 的 `NOT_SENT`）

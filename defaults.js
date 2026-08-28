@@ -16,6 +16,10 @@ var GEO_MOCK_DEFAULTS = {
   // **預設必須是 fixed** —— 好幾項驗證斷言比對的是精確座標，預設抖動會全紅。
   mode: 'fixed',
   jitterRadius: 50,   // 公尺。jitter 模式的最大偏移半徑
+  // 排除清單：這些網站上不覆寫，走真實定位。其餘網站照常生效 ——
+  // 預設空的，所以裝上之後的行為跟以前一樣。
+  // 刻意不叫黑名單：這裡不是在擋誰，只是「這幾個站別動」。
+  excludedSites: [],  // ['bank.example.com', 'localhost:3000', '*.example.com']
   // 介面語言：'auto'（跟隨瀏覽器）、'zh-TW'、'en'。
   // 跟 places 一樣只有擴充自己的頁面用得到，不進 bridge 的推送範圍。
   locale: 'auto',

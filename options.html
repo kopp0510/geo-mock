@@ -28,9 +28,29 @@
   #status.err { color: #c00; }
   footer { margin-top: 2rem; color: #666; font-size: .9em; }
 
+  /* 排除清單 */
+  .sites { margin-bottom: 1rem; }
+  #siteList { list-style: none; margin: 0 0 .5rem; padding: 0; }
+  #siteList li {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: .5rem; padding: .3rem .1rem .3rem .5rem;
+    border: 1px solid #0002; border-radius: 4px; margin-bottom: .3rem;
+  }
+  #siteList code { font: inherit; font-family: ui-monospace, monospace; }
+  #siteList button {
+    font: inherit; padding: .1rem .5rem; cursor: pointer;
+    background: none; border: 0; color: #999;
+  }
+  #siteList button:hover { color: #c00; }
+  .siterow { display: flex; gap: .4rem; }
+  #siteInput { flex: 1; min-width: 0; }
+  #addSite { flex: none; background: #0001; color: inherit; }
+  .empty { color: #666; font-size: .9em; margin: 0 0 .5rem; }
+
   /* #666 在深色底上約 3:1，低於一般文字的 4.5:1。popup.html 同樣處理。 */
   @media (prefers-color-scheme: dark) {
-    .sub, .hint, footer { color: #a8a8a8; }
+    .sub, .hint, footer, .empty { color: #a8a8a8; }
+    #siteList button { color: #888; }
   }
 </style>
 </head>
@@ -69,9 +89,22 @@
     <button type="submit" data-i18n="saveButton">儲存</button><span id="status" role="status"></span>
   </form>
 
+  <div class="sites">
+    <span class="name" data-i18n="excludedName">不覆寫的網站</span>
+    <span class="hint" data-i18n="excludedHint">列在這裡的網站走真實定位。</span>
+    <p class="empty" id="sitesEmpty" data-i18n="excludedEmpty">目前沒有排除任何網站</p>
+    <ul id="siteList"></ul>
+    <div class="siterow">
+      <input id="siteInput" type="text" autocomplete="off" spellcheck="false"
+             data-i18n-attr="placeholder:sitePlaceholder">
+      <button type="button" id="addSite" data-i18n="addSite">新增</button>
+    </div>
+  </div>
+
   <footer data-i18n="optionsFooter">altitude、heading、speed 等欄位尚未實作。</footer>
 
   <script src="defaults.js"></script>
+  <script src="sites.js"></script>
   <script src="i18n.js"></script>
   <script src="options.js"></script>
 </body>

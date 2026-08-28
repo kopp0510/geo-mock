@@ -19,7 +19,7 @@ const os = require('os');
 const EXT_DIR = path.resolve(__dirname, '..');
 const FIXTURES = path.join(__dirname, 'fixtures');
 const PORT = Number(process.env.PORT) || 0;
-const EXPECTED_ASSERTIONS = 13;
+const EXPECTED_ASSERTIONS = 14;
 const SHOTS = path.join(EXT_DIR, '.screenshots');
 const MOVED = { lat: 35.6812, lng: 139.7671, accuracy: 55 };   // 東京車站 —— 刻意挑一組非預設值
 const LIVE = { lat: 48.8584, lng: 2.2945, accuracy: 12 };      // 巴黎鐵塔 —— 驗即時推送用的第二組
@@ -420,13 +420,14 @@ async function cleanup({ ctx, profile }) {
       // 有些網站先查權限，看到 'prompt' 就乾脆不呼叫定位 API —— 症狀是
       // 「擴充開著但網站完全不問位置」，連覆寫痕跡那行都不會印，因為沒被呼叫過。
       const perm = await page.evaluate(async () => {
-        const geo = await navigator.permissions.query({ name: 'geolocation' });
-        // 別的權限不該被一起騙
+        const geoStatus = await navigator.permissions.query({ name: 'geolocation' });
+        // 別的權限不該被一起騙。不支援 camera 的環境回 'unsupported'，一樣不是 granted
         const camera = await navigator.permissions.query({ name: 'camera' })
           .then(s => s.state, () => 'unsupported');
         return {
-          geo: geo.state,
-          listenable: typeof geo.addEventListener === 'function',
+          geo: geoStatus.state,
+          // 網站常寫 status.addEventListener('change', ...)，假物件少了它會 TypeError
+          listenable: typeof geoStatus.addEventListener === 'function',
           camera,
         };
       });
@@ -632,9 +633,10 @@ async function cleanup({ ctx, profile }) {
       try { pushedKeys = Object.keys(JSON.parse(leak).settings || {}); } catch { /* 下面會紅 */ }
       console.log('推送內容的鍵        : ' + JSON.stringify(pushedKeys)
         + `  places 變動觸發的推送次數: ${pushedByPlaces}`);
-      results.push(['推送內容不含已存地點',
+      results.push(['推送內容不含已存地點與排除清單',
         pushedByPlaces === 0
-        && pushedKeys.length > 0 && !pushedKeys.includes('places')
+        && pushedKeys.length > 0
+        && !pushedKeys.includes('places') && !pushedKeys.includes('excludedSites')
         && !leak.includes(SECRET_PLACE.label)]);
 
       // 11) watchPosition / clearWatch（SPEC 第三版第 8 項）
@@ -682,7 +684,41 @@ async function cleanup({ ctx, profile }) {
       // 改回 fixed，下一項才是在測開關而不是順便測到模式
       await ext.evaluate(() => new Promise(r => chrome.storage.local.set({ mode: 'fixed' }, r)));
 
-      // 12) Popup 開關關掉 → 不再覆寫。第 2～11 項全在測「開啟」狀態，
+      // 12) 排除清單：清單上的站走真實定位，拿掉之後恢復（SPEC 第三版第 11 項）
+      //
+      // 全程不重整測試頁 —— 清單變更也是走 storage.onChanged 那條推送路徑。
+      const host = new URL(url).host;
+      const askUntil = (wantError) => page.evaluate(async (want) => {
+        const ask = () => new Promise(res => navigator.geolocation.getCurrentPosition(
+          p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+          e => res({ error: e.code }),
+          { timeout: 2000 }
+        ));
+        const t0 = Date.now();
+        for (;;) {
+          const r = await ask();
+          if (!!r.error === want) return r;
+          if (Date.now() - t0 > 4000) return r;
+          await new Promise(done => setTimeout(done, 100));
+        }
+      }, wantError);
+
+      await ext.evaluate((h) => new Promise(r =>
+        chrome.storage.local.set({ excludedSites: [h] }, r)), host);
+      const whenExcluded = await askUntil(true);
+
+      await ext.evaluate(() => new Promise(r =>
+        chrome.storage.local.set({ excludedSites: [] }, r)));
+      const whenBack = await askUntil(false);
+
+      console.log('排除清單            : '
+        + JSON.stringify({ host, whenExcluded, whenBack }));
+      // 兩個方向都要驗：只驗「排除後不覆寫」的話，一個永遠回真實定位的迴歸
+      // 也會綠燈；只驗「拿掉後恢復」則根本沒測到排除本身。
+      results.push(['排除清單上的網站走真實定位，拿掉後恢復',
+        !!whenExcluded.error && sameCoords(whenBack, LIVE)]);
+
+      // 13) Popup 開關關掉 → 不再覆寫。第 2～11 項全在測「開啟」狀態，
       //    enabled: false 這條路徑到這裡才第一次被驗到。
       await ext.goto(`chrome-extension://${extId}/popup.html`);
       // 開關的 CSS transition 是 .15s。不等它跑完就截圖，拍到的是過渡中間狀態 ——
@@ -728,7 +764,7 @@ async function cleanup({ ctx, profile }) {
       await cleanup(a);
     }
 
-    // 13) 失敗情境：設定永遠送不到，排隊必須有出口
+    // 14) 失敗情境：設定永遠送不到，排隊必須有出口
     noBridgeDir = makeNoBridgeVariant();
     const b = await launch(chromium, executablePath, noBridgeDir);
     try {

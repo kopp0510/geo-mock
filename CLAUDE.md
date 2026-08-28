@@ -21,6 +21,7 @@ geo-mock/
 ├─ defaults.js        # 設定預設值，bridge/options/verify 三方共用的唯一一份
 ├─ inject.js          # world: MAIN, run_at: document_start — 實際覆寫 geolocation
 ├─ bridge.js          # world: ISOLATED, run_at: document_start — 讀 storage 推給 inject
+├─ sites.js           # 排除清單的比對規則。content script 與擴充頁共用一份
 ├─ i18n.js            # 介面文字（繁中／英文）與套用到 DOM 的工具。popup/options/SW 共用
 ├─ _locales/          # 只放 manifest 的擴充描述；介面文字不走這裡（見架構約束）
 ├─ background.js      # service worker。唯一任務：代 popup 執行地址查詢
@@ -51,7 +52,11 @@ geo-mock/
   例外用 `NOT_WATCHED` 扣掉，每一個都要寫理由（目前是 `places` 與 `locale`，
   兩者都只有擴充自己的頁面用得到，理由寫在 `bridge.js` 那幾行）。`geocodeCache` / `geocodeLastAt` 不在 defaults
   裡，本來就不會被派生進來
-- **推送出去的內容也只有 `WATCHED` 那幾個鍵**（`bridge.js` 的 `pick()`），不是整份
+- **「要監看」與「要送出」是兩件事**（`bridge.js`）：`WATCHED` 決定哪些鍵變動要
+  推送，`SENT`（扣掉 `NOT_SENT`）決定送什麼過去。`excludedSites` 必須監看
+  —— 把目前這個站加進清單時該分頁要立刻停止覆寫 —— 但**不能送**：那是一份
+  使用者關心哪些網站的清單，頁面讀得到等於白送一份瀏覽偏好
+- **推送出去的內容只有 `SENT` 那幾個鍵**（`bridge.js` 的 `pick()`），不是整份
   設定。這個事件頁面監聽得到，整份送的話已存地點連同精確座標會被每個網站讀走。
   `tools/verify.js` 第 8 項守著這條 —— 拿掉過濾功能完全正常，沒有任何症狀
 - manifest 的 `content_scripts` 用 `world` 欄位需要 Chrome 111+

@@ -217,19 +217,25 @@
     // 這不是真的 PermissionStatus（跟 makePosition 回的不是真的 GeolocationPosition
     // 同一個取捨，見陷阱 4）。補上 EventTarget 那幾個方法是因為網站常寫
     // status.addEventListener('change', ...)，少了它會 TypeError。
-    const granted = () => ({
-      name: 'geolocation',
-      state: 'granted',
-      onchange: null,
-      addEventListener() {},
-      removeEventListener() {},
-      dispatchEvent() { return false; },
-    });
+    // 每次呼叫給一份新的，不共用：呼叫端會往 onchange 上寫東西，共用會互相污染。
+    function makeGrantedStatus() {
+      return {
+        name: 'geolocation',
+        state: 'granted',
+        onchange: null,
+        addEventListener() {},
+        removeEventListener() {},
+        dispatchEvent() { return false; },
+      };
+    }
 
     // 覆寫沒開、或設定始終沒到，就把問題原樣轉回原生 —— 別自作主張回 granted，
     // 那會讓網站以為拿得到位置，結果 getCurrentPosition 走原生跳出授權對話框。
-    const reply = (descriptor) =>
-      (settings && settings.enabled ? Promise.resolve(granted()) : nativeQuery(descriptor));
+    // settings 必須在呼叫的當下才讀：排隊那條路是等 flush() 之後才走進來的。
+    function reply(descriptor) {
+      if (!settings || !settings.enabled) return nativeQuery(descriptor);
+      return Promise.resolve(makeGrantedStatus());
+    }
 
     permissions.query = function (descriptor) {
       if (!descriptor || descriptor.name !== 'geolocation') return nativeQuery(descriptor);

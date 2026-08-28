@@ -44,6 +44,18 @@ const GEO_MOCK_I18N = (() => {
       languageLabel: '語言',
       languageAuto: '跟隨瀏覽器',
 
+      // 排除清單
+      excludeThis: '這個網站不要覆寫',
+      includeThis: '恢復覆寫這個網站',
+      siteExcluded: '這個網站已排除，走真實定位',
+      excludedName: '不覆寫的網站',
+      excludedHint: '列在這裡的網站走真實定位，其餘網站照常覆寫。比對網域含埠號（localhost:3000），也吃 *.example.com 這種子網域寫法。',
+      excludedEmpty: '目前沒有排除任何網站',
+      sitePlaceholder: 'example.com 或 localhost:3000',
+      addSite: '新增',
+      badSite: '認不得這個網址，直接填網域就好',
+      siteAlready: '這個網站已經在清單上了',
+
       // popup 的動態訊息
       searching: '搜尋中…',
       noResults: '找不到符合的地點',
@@ -118,6 +130,17 @@ const GEO_MOCK_I18N = (() => {
       openOptions: 'Advanced settings',
       languageLabel: 'Language',
       languageAuto: 'Follow browser',
+
+      excludeThis: "Don't override this site",
+      includeThis: 'Override this site again',
+      siteExcluded: 'This site is skipped — using real location',
+      excludedName: 'Sites to skip',
+      excludedHint: 'Sites listed here use the real location; every other site is still overridden. Matching is on host including port (localhost:3000), and *.example.com covers subdomains.',
+      excludedEmpty: 'No sites are being skipped',
+      sitePlaceholder: 'example.com or localhost:3000',
+      addSite: 'Add',
+      badSite: "Can't read that as an address — just the domain is enough",
+      siteAlready: 'That site is already on the list',
 
       searching: 'Searching…',
       noResults: 'No matching place found',

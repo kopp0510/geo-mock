@@ -14,15 +14,16 @@
 <script>
 // 這頁只會被 test.html 用 iframe 嵌進去，用來驗 all_frames 有沒有生效。
 // 跟 test.html 一樣只呼叫 navigator.geolocation，完全不查 IP。
+const out = document.getElementById('out');
 navigator.geolocation.getCurrentPosition(
-  (p) => {
-    window.__framePos = { lat: p.coords.latitude, lng: p.coords.longitude };
-    document.getElementById('out').textContent =
-      `${p.coords.latitude}, ${p.coords.longitude}`;
+  p => {
+    const at = { lat: p.coords.latitude, lng: p.coords.longitude };
+    window.__framePos = at;
+    out.textContent = `${at.lat}, ${at.lng}`;
   },
-  (e) => {
+  e => {
     window.__frameErr = e.code;
-    document.getElementById('out').textContent = 'error code=' + e.code;
+    out.textContent = 'error code=' + e.code;
   },
   { timeout: 5000 }
 );

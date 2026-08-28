@@ -9,7 +9,8 @@
   const el = Object.fromEntries(
     ['enabled', 'state', 'lat', 'lng', 'accuracy', 'options', 'q', 'go', 'results', 'msg',
       'places', 'addPlace', 'placeForm', 'placeName', 'cancelPlace',
-      'modeFixed', 'modeJitter', 'radiusLabel', 'radius', 'locale']
+      'modeFixed', 'modeJitter', 'radiusLabel', 'radius', 'locale',
+      'site', 'excludeSite']
       .map(k => [k, document.getElementById(k)])
   );
 
@@ -55,6 +56,12 @@
   }
 
   function setState(on) {
+    // 開關開著但這個站在排除清單上 —— 顯示「覆寫中」會直接誤導，
+    // 使用者會去查為什麼座標沒變。
+    if (on && siteExcluded()) {
+      paintState(t('siteExcluded'), 'excluded', 'excluded');
+      return;
+    }
     const tone = on ? 'on' : 'off';
     paintState(on ? t('stateOn') : t('stateOff'), tone, tone);
   }
@@ -89,6 +96,23 @@
       el.modeJitter.disabled = false;
       places = Array.isArray(s.places) ? s.places : [];
       renderPlaces();
+
+      // 目前分頁的 host 要另外問。它比設定晚到，所以拿到之後得重畫一次狀態列 ——
+      // 這個站若在排除清單上，上面那句 setState 顯示的「覆寫中」是錯的。
+      try {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          const url = tabs && tabs[0] && tabs[0].url;
+          try {
+            const parsed = new URL(url);
+            // 只認 http(s)：chrome:// 與擴充頁排除了也沒意義
+            currentHost = /^https?:$/.test(parsed.protocol) ? parsed.host.toLowerCase() : '';
+          } catch { currentHost = ''; }
+          renderSite();
+          setState(!!current.enabled);
+        });
+      } catch (err) {
+        console.error('[geo-mock] popup 讀取目前分頁失敗:', err);
+      }
     });
   } catch (err) {
     // 同步例外（如 Extension context invalidated）。bridge.js 也是這樣處理的，
@@ -361,11 +385,56 @@
     closePlaceForm();
   });
 
+  // ── 排除清單（這個網站要不要覆寫）────────────────────────────
+  // 拿目前分頁的網址需要 activeTab —— 那個權限只在使用者點擴充圖示時授予當下
+  // 這個分頁，比 tabs 權限（安裝時會顯示「讀取瀏覽記錄」）小得多。
+  let currentHost = '';
+
+  const excludedList = () =>
+    (Array.isArray(current.excludedSites) ? current.excludedSites : []);
+
+  // 比對規則在 sites.js，與 bridge.js 共用 —— 兩邊各寫一份的話規則一改就會漂掉，
+  // 症狀是「popup 說這個站排除了，實際上還在覆寫」。
+  const siteExcluded = () =>
+    !!currentHost && GEO_MOCK_SITES.excluded(excludedList(), currentHost);
+
+  function renderSite() {
+    // chrome:// 與擴充自己的頁面沒有可排除的 host，那顆按鈕就別出現
+    el.site.hidden = !currentHost;
+    if (!currentHost) return;
+    el.excludeSite.textContent = siteExcluded() ? t('includeThis') : t('excludeThis');
+    el.excludeSite.title = currentHost;
+  }
+
+  el.excludeSite.addEventListener('click', () => {
+    if (!currentHost) return;
+    const next = siteExcluded()
+      // 移除時把所有比對得到這個 host 的規則一起拿掉 —— 只刪字面相同的話，
+      // 被 *.example.com 蓋到的站按了按鈕不會有反應，看起來像壞了
+      ? excludedList().filter((p) => !GEO_MOCK_SITES.matches(p, currentHost))
+      : [...excludedList(), currentHost];
+    try {
+      chrome.storage.local.set({ excludedSites: next }, () => {
+        if (chrome.runtime.lastError) {
+          say(t('saveFailed', chrome.runtime.lastError.message), true);
+          return;
+        }
+        current.excludedSites = next;
+        renderSite();
+        setState(!!current.enabled);
+      });
+    } catch (err) {
+      console.error('[geo-mock] popup 更新排除清單失敗:', err);
+      say(t('saveFailed', err.message), true);
+    }
+  });
+
   // ── 語言 ────────────────────────────────────────────────────
   // 選了就存進 storage 並就地重畫，不必重開 popup。apply() 只管靜態的
   // data-i18n 文字，動態產生的那些（狀態列、模式、chips）要自己再跑一次。
   function relabel() {
     GEO_MOCK_I18N.apply();
+    renderSite();
     // apply() 會把 #state 寫成「讀取中…」（它帶著 data-i18n），所以 setState 一定
     // 要緊接在後面同步跑，中間不能插 await —— 插了就會停在讀取中，而 data-state
     // 說 off，tools/verify.js 第 10 項只看後者，會綠燈放行。

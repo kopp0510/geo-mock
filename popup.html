@@ -95,6 +95,12 @@
     background: none; border: 1px dashed #bbb; border-radius: 1rem;
   }
   #addPlace[disabled] { opacity: .5; cursor: default; }
+  .site { margin: .7rem 0 0; }
+  #excludeSite {
+    font: inherit; padding: .2rem .7rem; color: inherit; cursor: pointer;
+    background: none; border: 1px dashed #bbb; border-radius: 1rem;
+  }
+  .state.excluded { color: #666; }
   #placeForm { display: flex; gap: .3rem; }
   /* display: flex 的優先級高過 [hidden] 的 UA 預設，不補這行的話
      JS 設了 hidden 表單還是看得見。同理套用在往後任何有 display 的可隱藏元素 */
@@ -118,7 +124,8 @@
 
   /* #666 在深色底上約 3:1，低於一般文字的 4.5:1。options.html 同樣處理。 */
   @media (prefers-color-scheme: dark) {
-    dt, .note, .state.off, .coord, .msg, .attrib, .mlabel, .lang { color: #a8a8a8; }
+    dt, .note, .state.off, .state.excluded, .coord, .msg, .attrib, .mlabel,
+    .lang { color: #a8a8a8; }
     .del { color: #888; }
   }
 </style>
@@ -173,6 +180,10 @@
     </form>
   </div>
 
+  <p class="site" id="site" hidden>
+    <button type="button" id="excludeSite"></button>
+  </p>
+
   <p class="note" id="note" data-i18n="liveNote">改完即時生效，不必重新整理。</p>
 
   <footer>
@@ -189,6 +200,7 @@
   </footer>
 
   <script src="defaults.js"></script>
+  <script src="sites.js"></script>
   <script src="i18n.js"></script>
   <script src="popup.js"></script>
 </body>

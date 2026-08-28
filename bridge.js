@@ -40,8 +40,9 @@
   // defaults.js 沒載入時要吵。下面的 catch 會把 ReferenceError 一起吃掉，
   // 症狀是「裝了、也啟用了，但每個網站都回真實定位，console 一片乾淨」——
   // 正是本專案最想避免的那種靜默失效。
-  if (typeof GEO_MOCK_DEFAULTS === 'undefined') {
-    console.error('[geo-mock] defaults.js 未載入，覆寫停用 —— 檢查 manifest 的 content_scripts 順序');
+  if (typeof GEO_MOCK_DEFAULTS === 'undefined' || typeof GEO_MOCK_SITES === 'undefined') {
+    console.error('[geo-mock] defaults.js 或 sites.js 未載入，覆寫停用'
+      + ' —— 檢查 manifest 的 content_scripts 順序');
     publish(DISABLED);
     return;
   }
@@ -60,14 +61,26 @@
   const NOT_WATCHED = ['places', 'locale'];
   const WATCHED = Object.keys(GEO_MOCK_DEFAULTS).filter((k) => !NOT_WATCHED.includes(k));
 
-  // 送出去的內容也只留 WATCHED，不是整份設定。這個事件頁面自己的 JS 監聽得到
+  // 「要監看」與「要送出去」是兩件事。excludedSites 必須監看 —— 把目前這個站
+  // 加進清單時，這個分頁要立刻停止覆寫；但它**不能送進 MAIN world**：那是一份
+  // 使用者關心哪些網站的清單，頁面讀得到就等於白送一份瀏覽偏好。
+  const NOT_SENT = ['excludedSites'];
+  const SENT = WATCHED.filter((k) => !NOT_SENT.includes(k));
+
+  // 送出去的內容只留 SENT，不是整份設定。這個事件頁面自己的 JS 監聽得到
   // （見 CLAUDE.md「已知限制」），整份送的話，使用者自己命名的地點簿連同精確
-  // 座標會被每個網站讀走 —— 那超出「頁面看得到你設的那組假座標」那條已知限制
-  // 講好的範圍。inject.js 從頭到尾沒讀過 places，多送純粹是白給。
+  // 座標、以及排除清單都會被每個網站讀走。inject.js 從頭到尾只用得到 SENT 那幾個。
   //
   // 過濾放在這裡而不是 publish() 裡：publish 也服務 DISABLED 那條路徑，
-  // 而那條在 GEO_MOCK_DEFAULTS 沒載入時就會跑，那時 WATCHED 還在 TDZ 裡。
-  const pick = (settings) => Object.fromEntries(WATCHED.map((k) => [k, settings[k]]));
+  // 而那條在 GEO_MOCK_DEFAULTS 沒載入時就會跑，那時 SENT 還在 TDZ 裡。
+  const pick = (settings) => Object.fromEntries(SENT.map((k) => [k, settings[k]]));
+
+  // 被排除的站送 DISABLED，不是「送出但少幾個欄位」—— inject.js 那邊
+  // enabled:false 的語義本來就是「走真實定位」，一條現成的路徑不必再開一條。
+  // 比對規則在 sites.js，與 popup 共用（手抄兩份的話規則一改就會漂掉）。
+  const effective = (settings) =>
+    (GEO_MOCK_SITES.excluded(settings.excludedSites, location.host)
+      ? DISABLED : pick(settings));
 
   try {
     chrome.storage.local.get(GEO_MOCK_DEFAULTS, (settings) => {
@@ -76,7 +89,7 @@
         publish(DISABLED);
         return;
       }
-      publish(pick(settings));
+      publish(effective(settings));
     });
 
     // 改了座標或開關之後，不必重新整理分頁就生效（SPEC 第二版第 6 項）。
@@ -96,7 +109,7 @@
           // 讀不到就維持目前這份設定。這裡不送 DISABLED —— 覆寫已經在運作，
           // 一次讀取失敗不該把它關掉。
           if (chrome.runtime.lastError) return;
-          publish(pick(settings));
+          publish(effective(settings));
         });
       } catch (err) {
         console.warn('[geo-mock] 設定更新推送失敗，這個分頁需要重新整理:', err);
