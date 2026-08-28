@@ -21,7 +21,8 @@ geo-mock/
 ├─ defaults.js        # 設定預設值，bridge/options/verify 三方共用的唯一一份
 ├─ inject.js          # world: MAIN, run_at: document_start — 實際覆寫 geolocation
 ├─ bridge.js          # world: ISOLATED, run_at: document_start — 讀 storage 推給 inject
-├─ geocode.js         # Nominatim 查詢、快取、每秒 1 次閘門。只在 popup 載入，非 content script
+├─ background.js      # service worker。唯一任務：代 popup 執行地址查詢
+├─ geocode.js         # Nominatim 查詢、快取、每秒 1 次閘門。由 background.js importScripts
 ├─ rules.json         # declarativeNetRequest 規則：送 Nominatim 前改寫 User-Agent
 ├─ popup.html / popup.js       # 啟用開關、地址搜尋、目前座標一覽、進階設定連結
 ├─ options.html / options.js   # 座標設定。最上面的「貼上座標」欄接 Google Maps
@@ -40,6 +41,11 @@ geo-mock/
   `defaults.js` 必須排在前面。順序反了或檔案漏掉，`bridge.js` 會拿不到
   `GEO_MOCK_DEFAULTS`；那條路徑現在會 `console.error` 並退回真實定位，不會靜默失效
 - `manifest.json` 需 `host_permissions: ["https://nominatim.openstreetmap.org/*"]`
+- **地址查詢必須跑在 service worker，不能搬回 popup**：popup 點到外面就整個銷毀，
+  查詢途中被關掉的話結果寫不進快取，重開再查同一個字串就是第二次相同請求 ——
+  政策列為 faulty client 的行為。搬回去照樣有搜尋結果，測不出來，
+  所以 `tools/verify.js` 第 1 項用靜態檢查守著（manifest 有沒有註冊 SW、
+  popup.html 有沒有又直接載入 `geocode.js`）
 - **Nominatim 的 User-Agent 只能靠 declarativeNetRequest 改**：`fetch` 設不了這個
   header（瀏覽器禁止），擴充頁也不送 `Referer`，兩條識別路徑都空的。`rules.json` 的
   靜態規則在網路層改寫，實測有效（見 SPEC.md）。刪掉那條規則 = 直接違反政策。
@@ -118,12 +124,6 @@ geo-mock/
   同樣屬 SPEC 陷阱 4 的範圍，第三版再處理。
 - **設定送不到時最壞花掉呼叫端 timeout 的兩倍**：見 `inject.js` 逾時分支的註解。
   極端路徑，正常情況設定 20ms 內就到。
-- **popup 中途關閉會造成一次重複查詢**：`gate()` 在送出前就把時間戳寫進 storage
-  （所以速率閘門跨 popup 開關有效），但快取要等結果回來才寫。搜尋途中點到 popup 外面
-  → 環境銷毀 → 結果沒進快取；重開再查同一個字串就是第二次相同請求，正是 Nominatim
-  政策列為 faulty client 的行為。使用者沒有任何線索知道這件事發生了。
-  結構性的解法是把 fetch 移到 service worker（popup 關閉不影響），這個擴充目前
-  沒有 service worker，屬第三版範圍。
 - **預設 `enabled: true`，裝上就對所有網站生效**。task 3 加了 popup 開關之後重新
   檢討過，決定維持開啟：載入未封裝擴充本身就是明確的開發意圖，再要求「裝完還要
   手動打開」對開發工具是多餘的一步。代價是忘了關的話每個網站都在回報設定座標，

@@ -59,8 +59,9 @@ Manifest V3、純原生 JS，無 build 工具、無相依套件。
 資料來源 © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors。
 它的[使用政策](https://operations.osmfoundation.org/policies/nominatim/)是硬約束：
 每秒至多 1 次、必須快取、必須以可識別的 User-Agent 送出、必須標示出處，
-而且不得實作打字即查。規定集中在 `geocode.js` 與 `rules.json`
-（後者用 declarativeNetRequest 改寫 User-Agent，`fetch` 設不了這個 header）。
+而且不得實作打字即查。規定集中在 `geocode.js`、`rules.json`（用 declarativeNetRequest 改寫 User-Agent，
+`fetch` 設不了這個 header）與 `background.js`（查詢跑在 service worker，
+這樣搜尋途中關掉 popup 也不會浪費掉一次請求）。
 `tools/verify.js` 刻意不自動化這段，避免重複請求被封鎖。
 
 ## 文件

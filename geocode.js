@@ -1,7 +1,9 @@
 // geo-mock 地址搜尋 —— 包住 Nominatim 的查詢、快取與速率閘門。
 //
-// 只在擴充自己的頁面（popup）載入，不是 content script，所以這裡可以直接用
-// chrome.storage 的 promise 版 API，也不必像 defaults.js 那樣防二次注入。
+// 由 service worker（background.js）以 importScripts 載入，不是 content script，
+// 所以這裡可以直接用 chrome.storage 的 promise 版 API，也不必像 defaults.js 那樣
+// 防二次注入。**popup 不載入這支檔案** —— 它改用 sendMessage 請 service worker 查，
+// 理由見 background.js 開頭（popup 中途關閉時快取要能落地）。
 //
 // ── Nominatim 使用政策（硬約束，違反會被封鎖）───────────────────────────
 // https://operations.osmfoundation.org/policies/nominatim/

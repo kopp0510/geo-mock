@@ -6,6 +6,9 @@
   "minimum_chrome_version": "111",
   "permissions": ["storage", "declarativeNetRequestWithHostAccess"],
   "host_permissions": ["https://nominatim.openstreetmap.org/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "declarative_net_request": {
     "rule_resources": [
       { "id": "nominatim-ua", "enabled": true, "path": "rules.json" }

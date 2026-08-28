@@ -112,7 +112,8 @@ function startServer() {
   });
 }
 
-// 純靜態檢查：改寫 User-Agent 的 DNR 規則有沒有好好待在原地。
+// 純靜態檢查：兩條會靜默回退的政策設定 —— 改寫 User-Agent 的 DNR 規則，
+// 以及「查詢跑在 service worker」這件事。
 //
 // 這條規則是 Nominatim 唯一認得出這個應用的線索（政策硬要求，見 SPEC.md），
 // 而它壞掉是**靜默的**：規則檔被刪、enabled 被改 false、權限被拿掉、或 UA 的
@@ -121,8 +122,17 @@ function startServer() {
 // 刻意只讀檔比對，不送任何請求：自動化打 Nominatim 正是政策明文禁止的
 // （見 tools/CLAUDE.md「為什麼不驗地址搜尋」）。
 // 回傳 null 表示通過，回傳字串表示哪裡不對。
-function checkUaRule() {
+function checkPolicySetup() {
   const mf = JSON.parse(fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf8'));
+
+  // 查詢一旦搬回 popup，「中途關掉 popup → 結果沒進快取 → 下次重送同一個 query」
+  // 那個洞就回來了，而且照樣有搜尋結果，測不出來。兩個癥狀各查一個：
+  const sw = (mf.background || {}).service_worker;
+  if (!sw) return 'manifest 沒有註冊 background.service_worker，查詢會退回 popup 裡跑';
+  if (!fs.existsSync(path.join(EXT_DIR, sw))) return 'service worker 檔案不存在:' + sw;
+  if (fs.readFileSync(path.join(EXT_DIR, 'popup.html'), 'utf8').includes('geocode.js')) {
+    return 'popup.html 直接載入了 geocode.js —— 查詢應該走 service worker';
+  }
 
   if (!(mf.permissions || []).some(p => p.startsWith('declarativeNetRequest'))) {
     return 'manifest 少了 declarativeNetRequest 系列權限，規則不會生效';
@@ -228,9 +238,9 @@ async function cleanup({ ctx, profile }) {
 
   try {
     // ── 靜態檢查：不開瀏覽器、不送請求 ──────────────────────
-    const uaProblem = checkUaRule();
-    console.log('UA 改寫規則         : ' + (uaProblem || '設定完整'));
-    results.push(['Nominatim 的 UA 改寫規則沒有壞掉（靜態）', uaProblem === null]);
+    const setupProblem = checkPolicySetup();
+    console.log('政策相關設定        : ' + (setupProblem || '完整'));
+    results.push(['Nominatim 政策相關設定沒有壞掉（靜態）', setupProblem === null]);
 
     // ── 正常情境：擴充完整載入 ──────────────────────────────
     const a = await launch(chromium, executablePath, EXT_DIR);

@@ -49,7 +49,9 @@ Requirements
 - 需提供可識別應用程式的 HTTP Referer 或 User-Agent，原文補了一句
   「stock User-Agents as set by http libraries will not do」→ 見下方「識別要求」
 - 必須快取結果，重複送相同查詢會被歸類為 faulty client 並封鎖
-  → 查過的地址存進 `chrome.storage.local`，加上同字串的 in-flight 去重
+  → 查過的地址存進 `chrome.storage.local`，加上同字串的 in-flight 去重。
+  查詢跑在 service worker（`background.js`）而不是 popup：popup 點到外面就銷毀，
+  查詢途中被關掉的話結果寫不進快取，重開再查就是第二次相同請求
 - 必須顯示 OpenStreetMap 出處標示 → `popup.html` 的 `.attrib`
 
 Unacceptable Use（原文：strictly forbidden and **will get you banned**）

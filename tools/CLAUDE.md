@@ -18,12 +18,15 @@ node tools/verify.js        # exit 0 = 全部通過
 
 七項斷言（第 1 項純靜態，其餘要開瀏覽器）：
 
-1. **改寫 User-Agent 的 DNR 規則沒有壞掉**（`checkUaRule()`，只讀檔不送請求）。
-   Nominatim 政策要求可識別的 UA，而這條規則壞掉是靜默的 —— 規則檔被刪、`enabled`
-   被改 false、權限被拿掉、`urlFilter` 被放寬到整個 openstreetmap.org、或 UA 的版本號
-   跟 manifest 脫鉤，搜尋照樣有結果，要到被封鎖那天才會發現。**版本號那項是刻意的
-   同步閘門**：`rules.json` 的 UA 是手抄的版本號（靜態規則讀不到 manifest），只改
-   manifest 升版這裡就會紅
+1. **兩條政策設定沒有壞掉**（`checkPolicySetup()`，只讀檔不送請求）。
+   共同點是壞掉都**靜默** —— 搜尋照樣有結果，要到被 Nominatim 封鎖那天才發現：
+   - **改寫 User-Agent 的 DNR 規則**：規則檔被刪、`enabled` 被改 false、權限被拿掉、
+     `urlFilter` 被放寬到整個 openstreetmap.org、或 UA 的版本號跟 manifest 脫鉤。
+     **版本號那項是刻意的同步閘門**：`rules.json` 的 UA 是手抄的版本號
+     （靜態規則讀不到 manifest），只改 manifest 升版這裡就會紅
+   - **查詢跑在 service worker**：manifest 有沒有註冊 `background.service_worker`、
+     `popup.html` 有沒有又直接載入 `geocode.js`。查詢搬回 popup 的話，
+     「中途關掉 popup → 結果沒進快取 → 下次重送同一個 query」那個洞就回來了
 2. 定位覆寫生效（載入後呼叫 → 回傳 `defaults.js` 的座標）
 3. 設定未達時的請求排隊（`document_start` 搶先呼叫 → 被壓住十幾 ms 後正確回應）
 4. 貼上「緯度, 經度」會拆進兩欄（Google Maps 右鍵複製的格式，位數留滿確認不被截斷）
@@ -41,7 +44,9 @@ node tools/verify.js        # exit 0 = 全部通過
 （第 1 項）才進斷言。
 
 第 4～6 項需要 extension id，靠讀 `chrome://extensions` 的 shadow DOM 取得
-（這個擴充沒有 service worker，沒有更現成的路徑）。**這條路徑綁死 Chrome 內部 UI
+（早期這個擴充沒有 service worker，shadow DOM 是唯一路徑。現在有 `background.js` 了，
+理論上可以改用 playwright 的 `context.serviceWorkers()` 拿 id —— 但目前這條還能用，
+沒有動它的理由；哪天 Chrome 改版把它弄斷，那是第一個該試的替代方案）。**這條路徑綁死 Chrome 內部 UI
 的自訂元素名稱，Chrome 改版重構就會斷** —— 斷掉時的症狀是第 4 項拋例外，
 不會誤判成 PASS。
 

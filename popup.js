@@ -139,13 +139,17 @@
     el.results.hidden = items.length === 0;
   }
 
+  // 查詢跑在 service worker（background.js），不在這裡。這樣 popup 中途被關掉時，
+  // fetch 與快取寫入照樣完成，不會下次再送一遍同樣的查詢。
   function run(query) {
     const mine = ++seq;
     say('搜尋中…');
-    GEO_MOCK_GEOCODE.search(query).then((items) => {
+    chrome.runtime.sendMessage({ type: 'geo-mock:search', query }).then((res) => {
       if (mine !== seq) return;      // 已經有更新的查詢送出，這份結果作廢
-      render(items);
-      say(items.length ? '' : '找不到符合的地點');
+      if (!res) throw new Error('service worker 沒有回應');
+      if (res.error) throw new Error(res.error);
+      render(res.results);
+      say(res.results.length ? '' : '找不到符合的地點');
     }).catch((err) => {
       if (mine !== seq) return;
       console.error('[geo-mock] 地址搜尋失敗:', err);
