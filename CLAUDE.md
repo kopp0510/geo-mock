@@ -36,6 +36,13 @@ geo-mock/
 - 覆寫對象是 `navigator.geolocation`，必須跑在頁面自己的 JS 環境
 - **雙 content script 不可合併**：MAIN world 拿不到 `chrome.storage`，所以由
   ISOLATED world 的 `bridge.js` 讀設定、用 CustomEvent 推給 MAIN world 的 `inject.js`
+- **跨 world 的事件帶遞增序號**：`{ seq, settings }`，`inject.js` 只接受嚴格大於
+  已收到的 seq。`storage.onChanged` 的即時推送與 READY 握手的補送會交錯，
+  沒有序號的話舊設定後到就把新的蓋掉。序號擋的是自家的亂序，**擋不住頁面偽造**
+  （見「已知限制」）
+- **`bridge.js` 的 `onChanged` 必須過濾 key**：`geocodeCache` / `geocodeLastAt`
+  跟設定放在同一個 storage 區、每次搜尋都會寫。不過濾的話查一次地址就對每個
+  開著的分頁推一次設定
 - manifest 的 `content_scripts` 用 `world` 欄位需要 Chrome 111+
 - **ISOLATED world 是多檔載入，順序有語意依賴**：`["defaults.js", "bridge.js"]`，
   `defaults.js` 必須排在前面。順序反了或檔案漏掉，`bridge.js` 會拿不到
@@ -116,14 +123,16 @@ geo-mock/
 
 - **覆寫可被頁面看穿也可被關掉**：`geo-mock:settings` / `geo-mock:ready` 是 document
   上的普通 CustomEvent，頁面自己的 JS 能監聽（讀到你設的座標）也能偽造
-  （送一個 `{"enabled":false}` 就關掉覆寫）。跨 world 沒有私密通道可用，這是架構的
-  必然代價。**在會偵測 location spoofing 的網站上測不出預期結果時，先想到這條。**
-  第二版做 `storage.onChanged` 即時推送時要重新設計事件協定（帶遞增序號）。
+  （送一個帶大序號的 `{"enabled":false}` 就關掉覆寫）。跨 world 沒有私密通道可用，
+  這是架構的必然代價。**在會偵測 location spoofing 的網站上測不出預期結果時，
+  先想到這條。** 事件協定的 `seq` 是為了擋自家的亂序而加的，對惡意偽造沒有幫助 ——
+  頁面送一個很大的 seq 就能把後續真正的更新全部擋在門外。
 - **`getCurrentPosition` 可被繞過**：覆寫是實例上的賦值，
   `Geolocation.prototype.getCurrentPosition.call(navigator.geolocation, ...)` 走的是原生。
   同樣屬 SPEC 陷阱 4 的範圍，第三版再處理。
 - **設定送不到時最壞花掉呼叫端 timeout 的兩倍**：見 `inject.js` 逾時分支的註解。
-  極端路徑，正常情況設定 20ms 內就到。
+  極端路徑，正常情況設定 20ms 內就到。有了即時推送之後這不再是終端狀態 ——
+  設定晚到會帶著更大的序號把它接回去。
 - **「查詢結果沒進快取就重送」仍有兩個窄窗口**，刻意不處理。日常那條路徑
   （搜尋途中點掉 popup）已經在把查詢搬進 service worker 時修好了，剩下的是：
   SW 在 fetch 途中被**強制**終止（`chrome://extensions` 按重新載入、擴充更新、

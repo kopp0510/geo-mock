@@ -1,6 +1,6 @@
 // geo-mock popup —— 啟用開關 + 地址搜尋。
 // 座標的細項欄位（accuracy 等）仍在 options 頁改。
-// 沒有 storage.onChanged 即時推送（SPEC 第二版第 6 項），所以切換後必須重整分頁。
+// 設定寫進 storage 後由 bridge.js 的 onChanged 即時推給每個分頁，不必重整。
 (() => {
   'use strict';
 
@@ -108,7 +108,7 @@
         showCoords({ lat: place.lat, lng: place.lng });
         invalidate();
         el.q.value = '';           // 程式賦值不會觸發 input，訊息不會被洗掉
-        say('已套用，重新整理目標分頁即生效');
+        say('已套用');
       });
     } catch (err) {
       console.error('[geo-mock] popup 套用座標失敗:', err);

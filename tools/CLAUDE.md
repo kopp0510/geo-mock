@@ -16,7 +16,7 @@ manifest.json 沒有引用它們，Chrome 也不會載入。
 node tools/verify.js        # exit 0 = 全部通過
 ```
 
-七項斷言（第 1 項純靜態，其餘要開瀏覽器）：
+八項斷言（第 1 項純靜態，其餘要開瀏覽器）：
 
 1. **兩條政策設定沒有壞掉**（`checkPolicySetup()`，只讀檔不送請求）。
    共同點是壞掉都**靜默** —— 搜尋照樣有結果，要到被 Nominatim 封鎖那天才發現：
@@ -35,18 +35,21 @@ node tools/verify.js        # exit 0 = 全部通過
 4. 貼上「緯度, 經度」會拆進兩欄（Google Maps 右鍵複製的格式，位數留滿確認不被截斷）
 5. Options 頁存的座標會生效（存一組非預設值 → content script 讀到新值，
    lat/lng/accuracy 都驗；順帶截圖到 `.screenshots/options.png`）
-6. 關掉開關後不再覆寫（經 popup 取消勾選 → 重新載入測試頁）。第 2～5 項全在測
+6. **改設定不重整分頁也生效**（options 存第二組座標 → **不** `page.goto` →
+   輪詢到測試頁吃到新值）。這一項唯一在測的就是「沒有重整」這件事，
+   所以那行 `page.goto` 千萬別為了穩定性補回去，補了就變成第 5 項的重複
+7. 關掉開關後不再覆寫（經 popup 取消勾選 → 重新載入測試頁）。第 2～6 項全在測
    「開啟」狀態，`enabled: false` 這條路徑只有這一項驗得到。斷言看的是
    `inject.js` 有沒有印出覆寫痕跡，不是比對座標數值 —— 只比座標的話，
    「停用分支誤送預設值」這種迴歸會綠燈放行
-7. 設定永不到達時仍會回應（腳本會即時造一個「只有 inject.js、沒有 bridge.js」的
+8. 設定永不到達時仍會回應（腳本會即時造一個「只有 inject.js、沒有 bridge.js」的
    擴充變體來複現這個失敗模式；修正前這裡會永久懸掛）
 
 **為什麼不驗地址搜尋**：Nominatim 政策明文禁止自動化的重複查詢，跑一次 CI 就打一次
 別人捐的伺服器。搜尋功能只做手動驗證（見下方「手動測試」）；能靜態比對的部分
 （第 1 項）才進斷言。
 
-第 4～6 項需要 extension id，靠讀 `chrome://extensions` 的 shadow DOM 取得
+第 4～7 項需要 extension id，靠讀 `chrome://extensions` 的 shadow DOM 取得
 （早期這個擴充沒有 service worker，shadow DOM 是唯一路徑。現在有 `background.js` 了，
 理論上可以改用 playwright 的 `context.serviceWorkers()` 拿 id —— 但目前這條還能用，
 沒有動它的理由；哪天 Chrome 改版把它弄斷，那是第一個該試的替代方案）。**這條路徑綁死 Chrome 內部 UI

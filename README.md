@@ -23,8 +23,9 @@
   最上面有「貼上座標」欄，可以把 Google Maps 右鍵複製的
   `24.262246, 120.624503` 這種一整串直接貼進去，會自動拆進下面兩欄
 
-**切換開關或改座標後，要重新整理目標分頁才生效。** 即時推送設定尚未實作
-（SPEC.md 第二版第 6 項）。
+**切換開關或改座標會即時生效，不必重新整理分頁。** 但那只影響頁面**下一次**
+呼叫定位 —— 已經把位置抓好存起來的頁面不會自己動，那要 `watchPosition`
+（SPEC.md 第三版）。
 
 預設是**開啟**的，座標為台北 101 附近。裝上之後每個網站都會拿到這組座標，
 不需要時記得用開關關掉 —— 覆寫生效時 `inject.js` 會在該頁 console 印一行
@@ -45,7 +46,7 @@ iframe 支援。見 [SPEC.md](SPEC.md) 的實作優先順序。
 ## 開發
 
 ```bash
-node tools/verify.js        # exit 0 = 七項斷言全過
+node tools/verify.js        # exit 0 = 八項斷言全過
 ```
 
 需要 playwright 與 Chrome for Testing（**系統的 Chrome stable 不行**，

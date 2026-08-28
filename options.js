@@ -56,7 +56,7 @@
         say('儲存失敗:' + chrome.runtime.lastError.message, 'err');
         return;
       }
-      say('已儲存，重新整理目標分頁即生效', 'ok');
+      say('已儲存，即時生效', 'ok');
     });
   });
 })();

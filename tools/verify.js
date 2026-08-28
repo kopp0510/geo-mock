@@ -19,9 +19,10 @@ const os = require('os');
 const EXT_DIR = path.resolve(__dirname, '..');
 const FIXTURES = path.join(__dirname, 'fixtures');
 const PORT = Number(process.env.PORT) || 0;
-const EXPECTED_ASSERTIONS = 7;
+const EXPECTED_ASSERTIONS = 8;
 const SHOTS = path.join(EXT_DIR, '.screenshots');
 const MOVED = { lat: 35.6812, lng: 139.7671, accuracy: 55 };   // 東京車站 —— 刻意挑一組非預設值
+const LIVE = { lat: 48.8584, lng: 2.2945, accuracy: 12 };      // 巴黎鐵塔 —— 驗即時推送用的第二組
 // Google Maps 右鍵複製出來的原始格式，位數刻意留滿，確認不會被截斷
 const PASTED = '24.262246621321527, 120.62450392661896';
 const PASTED_LAT = '24.262246621321527';
@@ -326,7 +327,37 @@ async function cleanup({ ctx, profile }) {
       results.push(['Options 頁存的座標會生效',
         sameCoords(after, MOVED) && after.acc === MOVED.accuracy]);
 
-      // 5) Popup 開關關掉 → 不再覆寫。前四項全在測「開啟」狀態，
+      // 6) 即時推送：改完設定不重整分頁也要生效（SPEC 第二版第 6 項）
+      await ext.goto(`chrome-extension://${extId}/options.html`);
+      await ext.fill('#lat', String(LIVE.lat));
+      await ext.fill('#lng', String(LIVE.lng));
+      await ext.fill('#accuracy', String(LIVE.accuracy));
+      await ext.click('button[type=submit]');
+      await ext.waitForFunction(() => document.getElementById('status').className === 'ok');
+
+      // 刻意不 page.goto —— 測試頁維持上一次載入的狀態。重整過就測不到
+      // 「不重整也生效」這件事了，那正是這一項唯一在測的東西。
+      const pushed = await page.evaluate(async (want) => {
+        const ask = () => new Promise(res => navigator.geolocation.getCurrentPosition(
+          p => res({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }),
+          () => res(null),
+          { timeout: 3000 }
+        ));
+        // 推送是非同步的（storage.onChanged → bridge → CustomEvent → inject），
+        // 輪詢到拿到新值為止，逾時就把最後一次的結果交出去讓斷言判定。
+        const t0 = Date.now();
+        for (;;) {
+          const p = await ask();
+          if (p && Math.abs(p.lat - want.lat) < 1e-6) return { ...p, ms: Date.now() - t0 };
+          if (Date.now() - t0 > 3000) return p;
+          await new Promise(r => setTimeout(r, 50));
+        }
+      }, LIVE);
+      console.log('改設定後（未重整）  : ' + JSON.stringify(pushed));
+      results.push(['改設定不重整分頁也生效',
+        sameCoords(pushed, LIVE) && pushed.acc === LIVE.accuracy]);
+
+      // 7) Popup 開關關掉 → 不再覆寫。前五項全在測「開啟」狀態，
       //    enabled: false 這條路徑到這裡才第一次被驗到。
       await ext.goto(`chrome-extension://${extId}/popup.html`);
       // 開關的 CSS transition 是 .15s。不等它跑完就截圖，拍到的是過渡中間狀態 ——
@@ -364,7 +395,7 @@ async function cleanup({ ctx, profile }) {
       // 之後要在 browser a 這個區塊裡加測試，記得它跑在「已停用」的狀態下。
       const overrodeAnything = logs.some(t => t.includes('定位已覆寫為'));
       results.push(['關掉開關後不再覆寫',
-        !overrodeAnything && !(off.overridden && sameCoords(off, MOVED))]);
+        !overrodeAnything && !(off.overridden && sameCoords(off, LIVE))]);
     } finally {
       await cleanup(a);
     }
