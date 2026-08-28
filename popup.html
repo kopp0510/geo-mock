@@ -6,7 +6,7 @@
 <style>
   :root { color-scheme: light dark; }
   body {
-    width: 17rem; margin: 0; padding: .9rem 1rem 1rem;
+    width: 20rem; margin: 0; padding: .9rem 1rem 1rem;
     font: 13px/1.5 -apple-system, "Helvetica Neue", "PingFang TC", sans-serif;
   }
   header { display: flex; align-items: center; justify-content: space-between; }
@@ -28,6 +28,30 @@
   .switch input:checked ~ .track::after { transform: translateX(1.1rem); }
   .switch input:focus-visible ~ .track { outline: 2px solid #2563eb; outline-offset: 2px; }
 
+  /* 地址搜尋區 */
+  .search { margin: .8rem 0 0; }
+  #q {
+    width: 100%; padding: .4rem .5rem; font: inherit; box-sizing: border-box;
+    border: 1px solid #bbb; border-radius: 4px; background: Field; color: FieldText;
+  }
+  #results {
+    list-style: none; margin: .4rem 0 0; padding: 0;
+    max-height: 11rem; overflow-y: auto;
+    border: 1px solid #0002; border-radius: 4px;
+  }
+  #results li + li { border-top: 1px solid #0001; }
+  #results button {
+    display: block; width: 100%; padding: .4rem .5rem;
+    font: inherit; text-align: left; color: inherit;
+    background: none; border: 0; cursor: pointer;
+  }
+  #results button:hover, #results button:focus-visible { background: #2563eb26; }
+  .coord { display: block; color: #666; font-size: .85em; font-variant-numeric: tabular-nums; }
+  .msg { margin: .4rem 0 0; min-height: 1.2em; color: #666; }
+  .msg.err { color: #c00; }
+  /* Nominatim 使用政策要求顯示出處，這行不能拿掉（見 SPEC.md） */
+  .attrib { margin: .35rem 0 0; color: #666; font-size: .85em; }
+
   .state { margin: .75rem 0 0; font-weight: 600; }
   .state.on  { color: #157347; }
   .state.off { color: #666; }
@@ -42,7 +66,7 @@
 
   /* #666 在深色底上約 3:1，低於一般文字的 4.5:1。options.html 同樣處理。 */
   @media (prefers-color-scheme: dark) {
-    dt, .note, .state.off { color: #a8a8a8; }
+    dt, .note, .state.off, .coord, .msg, .attrib { color: #a8a8a8; }
   }
 </style>
 </head>
@@ -54,6 +78,15 @@
       <span class="track"></span>
     </label>
   </header>
+
+  <div class="search">
+    <input id="q" type="search" placeholder="搜尋地址或地標，例如 台北車站"
+           autocomplete="off" spellcheck="false" aria-label="搜尋地址或地標">
+    <ul id="results" hidden></ul>
+    <p class="msg" id="msg" role="status"></p>
+    <p class="attrib">地址資料來源：<a href="https://www.openstreetmap.org/copyright"
+      target="_blank" rel="noreferrer">OpenStreetMap</a></p>
+  </div>
 
   <p class="state" id="state" role="status">讀取中…</p>
 
@@ -68,6 +101,7 @@
   <footer><a href="#" id="options">進階設定</a></footer>
 
   <script src="defaults.js"></script>
+  <script src="geocode.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

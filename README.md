@@ -15,7 +15,10 @@
 
 ## 使用
 
-- **工具列圖示** → 啟用／停用開關、目前座標一覽、進階設定連結
+- **工具列圖示** → 啟用／停用開關、地址搜尋、目前座標一覽、進階設定連結
+- **地址搜尋**（popup）→ 打「台北車站」這類地址或地標，停手約 1 秒後出候選清單
+  （地址 + 座標），點一下就套用。按 Enter 可以不等。查過的字串會快取，
+  重複查同一個不會再送出請求
 - **進階設定**（options 頁）→ 設定緯度、經度、accuracy。
   最上面有「貼上座標」欄，可以把 Google Maps 右鍵複製的
   `24.262246, 120.624503` 這種一整串直接貼進去，會自動拆進下面兩欄
@@ -30,8 +33,9 @@
 ## 目前做到哪
 
 第一版（固定座標覆寫）已可用：`getCurrentPosition` 覆寫、options 頁存座標、popup 開關。
+第二版做了地址搜尋 + 候選清單 + 快取。
 
-**還沒做**：地址搜尋、已存地點、jitter 抖動模式、設定即時推送、`watchPosition`、
+**還沒做**：已存地點、jitter 抖動模式、設定即時推送、`watchPosition`、
 iframe 支援。見 [SPEC.md](SPEC.md) 的實作優先順序。
 
 **已知限制**：頁面自己的 JS 能監聽也能偽造擴充用的 CustomEvent，覆寫也能經
@@ -41,7 +45,7 @@ iframe 支援。見 [SPEC.md](SPEC.md) 的實作優先順序。
 ## 開發
 
 ```bash
-node tools/verify.js        # exit 0 = 五項斷言全過
+node tools/verify.js        # exit 0 = 六項斷言全過
 ```
 
 需要 playwright 與 Chrome for Testing（**系統的 Chrome stable 不行**，
@@ -51,8 +55,10 @@ node tools/verify.js        # exit 0 = 五項斷言全過
 
 Manifest V3、純原生 JS，無 build 工具、無相依套件。
 
-地址搜尋（尚未實作）將使用 [Nominatim](https://nominatim.openstreetmap.org/)，
+地址搜尋使用 [Nominatim](https://nominatim.openstreetmap.org/)，
 資料來源 © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors。
+它的使用政策是硬約束（每秒 1 次上限、必須快取、必須標示出處），
+全部集中在 `geocode.js`；`tools/verify.js` 刻意不自動化這段，避免重複請求被封鎖。
 
 ## 文件
 

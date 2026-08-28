@@ -37,7 +37,7 @@ Options 頁放不常改的欄位：altitude、altitudeAccuracy、heading、speed
 
 ## Geocoding
 
-使用 Nominatim：`https://nominatim.openstreetmap.org/search?format=json&q=...`
+使用 Nominatim：`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=zh-TW&q=...`
 
 **使用政策必須遵守**（https://operations.osmfoundation.org/policies/nominatim/）：
 
@@ -46,9 +46,17 @@ Options 頁放不常改的欄位：altitude、altitudeAccuracy、heading、speed
 - 必須顯示 OpenStreetMap 出處標示
 - 需提供可識別應用程式的 HTTP Referer 或 User-Agent
 
-**未解事項**：`fetch` 無法設定 `User-Agent`（瀏覽器禁止的 header），擴充頁的 Referer
-是 `chrome-extension://<id>`。這是否符合 Nominatim 的識別要求尚未確認。實作時先驗證，
-若被擋則改用有 API key 的服務（LocationIQ / Mapbox / Google Geocoding）。
+**識別問題（2026-08-28 實測結果，原「未解事項」）**：擴充頁的 `fetch` 打得通，
+Nominatim 回 200 且帶 `access-control-allow-origin: *`。但實際送出的請求**沒有任何
+應用程式識別**——`User-Agent` 是通用的 Chrome 字串，`Referer` 是空的（Chrome 不替
+擴充頁的 fetch 送 Referer，跟原本預期的 `chrome-extension://<id>` 不一樣）。
+也就是說政策「需提供可識別應用程式的 Referer 或 User-Agent」這條目前**沒有滿足**，
+只是還沒被擋。
+
+現在靠壓低請求量降低風險：打字 debounce 1200ms、實際送出之間硬性間隔 1 秒、
+查過的字串進 `chrome.storage.local` 快取。若日後被擋，改用有 API key 的服務
+（LocationIQ / Mapbox / Google Geocoding）——`geocode.js` 是唯一送出請求的地方，
+換服務只動那一支。
 
 ## 實作優先順序
 

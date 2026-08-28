@@ -21,7 +21,8 @@ geo-mock/
 ├─ defaults.js        # 設定預設值，bridge/options/verify 三方共用的唯一一份
 ├─ inject.js          # world: MAIN, run_at: document_start — 實際覆寫 geolocation
 ├─ bridge.js          # world: ISOLATED, run_at: document_start — 讀 storage 推給 inject
-├─ popup.html / popup.js       # 啟用開關、目前座標一覽、進階設定連結
+├─ geocode.js         # Nominatim 查詢、快取、每秒 1 次閘門。只在 popup 載入，非 content script
+├─ popup.html / popup.js       # 啟用開關、地址搜尋、目前座標一覽、進階設定連結
 ├─ options.html / options.js   # 座標設定。最上面的「貼上座標」欄接 Google Maps
 │                             #   右鍵複製的「緯度, 經度」整串，拆進下面兩欄
 ├─ icons/16.png 48.png 128.png
@@ -64,6 +65,10 @@ geo-mock/
 
 6. **Nominatim 使用政策是硬約束**（見 SPEC.md）：搜尋框 debounce ≥1000ms、結果必須快取
    進 `chrome.storage.local`、必須顯示 OpenStreetMap 出處。違反會被封鎖。
+   三條規定都兌現在 `geocode.js`（出處那行在 `popup.html` 的 `.attrib`）。
+   **要打 Nominatim 一律經過 `geocode.js`**，別在別的地方另開 fetch——
+   速率閘門是模組內的狀態，繞過去就等於沒有。同理，`tools/verify.js` 刻意不驗地址搜尋：
+   自動化重複請求正是政策明文禁止的，這段只做手動驗證。
 
 ## 開發流程（每個功能段落依序走）
 <!-- dd-loop-version: 6step；供 /dd-init 判斷是否提議升級，勿刪 -->
