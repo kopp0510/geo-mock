@@ -40,6 +40,11 @@
 
   <form id="form">
     <label>
+      <span class="name">貼上座標<span class="hint">從 Google Maps 右鍵複製的那一串，例如
+        24.262246621321527, 120.62450392661896 —— 會自動拆進下面兩欄</span></span>
+      <input id="paste" type="text" placeholder="緯度, 經度" autocomplete="off" spellcheck="false">
+    </label>
+    <label>
       <span class="name">緯度 latitude<span class="hint">-90 ～ 90</span></span>
       <input id="lat" type="number" step="any" min="-90" max="90" required>
     </label>

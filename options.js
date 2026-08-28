@@ -23,6 +23,20 @@
     for (const k of FIELDS) el[k].value = saved[k];
   });
 
+  // Google Maps 右鍵複製出來的是「緯度, 經度」一整串，
+  // type=number 的欄位吃不下（逗號會讓 valueAsNumber 變 NaN），所以另開一個
+  // 文字欄接住它，拆完填進下面兩欄。範圍檢查仍走 submit 那條共同路徑。
+  document.getElementById('paste').addEventListener('input', (e) => {
+    const raw = e.target.value.trim();
+    if (!raw) { say('', ''); return; }
+    // 逗號或空白分隔都收；科學記號不收，貼上來的座標不會長那樣
+    const m = raw.match(/^(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)$/);
+    if (!m) { say('認不得這個格式，預期「緯度, 經度」', 'err'); return; }
+    el.lat.value = m[1];
+    el.lng.value = m[2];
+    say('已拆進下面兩欄，記得按儲存', 'ok');
+  });
+
   form.addEventListener('submit', (e) => {
     e.preventDefault();
 

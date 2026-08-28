@@ -21,8 +21,9 @@ geo-mock/
 ├─ defaults.js        # 設定預設值，bridge/options/verify 三方共用的唯一一份
 ├─ inject.js          # world: MAIN, run_at: document_start — 實際覆寫 geolocation
 ├─ bridge.js          # world: ISOLATED, run_at: document_start — 讀 storage 推給 inject
-├─ popup.html / popup.js
-├─ options.html / options.js
+├─ popup.html / popup.js       # 啟用開關、目前座標一覽、進階設定連結
+├─ options.html / options.js   # 座標設定。最上面的「貼上座標」欄接 Google Maps
+│                             #   右鍵複製的「緯度, 經度」整串，拆進下面兩欄
 ├─ icons/16.png 48.png 128.png
 └─ tools/             # 驗證腳本，不會被打包進擴充（見 tools/CLAUDE.md）
 ```

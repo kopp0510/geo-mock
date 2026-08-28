@@ -19,9 +19,13 @@ const os = require('os');
 const EXT_DIR = path.resolve(__dirname, '..');
 const FIXTURES = path.join(__dirname, 'fixtures');
 const PORT = Number(process.env.PORT) || 0;
-const EXPECTED_ASSERTIONS = 5;
+const EXPECTED_ASSERTIONS = 6;
 const SHOTS = path.join(EXT_DIR, '.screenshots');
 const MOVED = { lat: 35.6812, lng: 139.7671, accuracy: 55 };   // 東京車站 —— 刻意挑一組非預設值
+// Google Maps 右鍵複製出來的原始格式，位數刻意留滿，確認不會被截斷
+const PASTED = '24.262246621321527, 120.62450392661896';
+const PASTED_LAT = '24.262246621321527';
+const PASTED_LNG = '120.62450392661896';
 const EXPECT = require(path.join(EXT_DIR, 'defaults.js'));   // 與擴充共用同一份預設值
 
 function fail(msg) {
@@ -208,6 +212,17 @@ async function cleanup({ ctx, profile }) {
       const extId = ids[0];
 
       await ext.goto(`chrome-extension://${extId}/options.html`);
+
+      // 3a) 貼上欄：Google Maps 的「緯度, 經度」一整串要能拆進兩個數字欄
+      await ext.fill('#paste', PASTED);
+      const split = await ext.evaluate(() => ({
+        lat: document.getElementById('lat').value,
+        lng: document.getElementById('lng').value,
+      }));
+      console.log('貼上座標拆解後      : ' + JSON.stringify(split));
+      results.push(['貼上「緯度, 經度」會拆進兩欄',
+        split.lat === PASTED_LAT && split.lng === PASTED_LNG]);
+
       await ext.fill('#lat', String(MOVED.lat));
       await ext.fill('#lng', String(MOVED.lng));
       await ext.fill('#accuracy', String(MOVED.accuracy));

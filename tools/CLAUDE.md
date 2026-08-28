@@ -16,20 +16,21 @@ manifest.json 沒有引用它們，Chrome 也不會載入。
 node tools/verify.js        # exit 0 = 全部通過
 ```
 
-五項斷言：
+六項斷言：
 
 1. 定位覆寫生效（載入後呼叫 → 回傳 `defaults.js` 的座標）
 2. 設定未達時的請求排隊（`document_start` 搶先呼叫 → 被壓住十幾 ms 後正確回應）
-3. Options 頁存的座標會生效（存一組非預設值 → content script 讀到新值，
+3. 貼上「緯度, 經度」會拆進兩欄（Google Maps 右鍵複製的格式，位數留滿確認不被截斷）
+4. Options 頁存的座標會生效（存一組非預設值 → content script 讀到新值，
    lat/lng/accuracy 都驗；順帶截圖到 `.screenshots/options.png`）
-4. 關掉開關後不再覆寫（經 popup 取消勾選 → 重新載入測試頁）。前三項全在測
+5. 關掉開關後不再覆寫（經 popup 取消勾選 → 重新載入測試頁）。前四項全在測
    「開啟」狀態，`enabled: false` 這條路徑只有這一項驗得到。斷言看的是
    `inject.js` 有沒有印出覆寫痕跡，不是比對座標數值 —— 只比座標的話，
    「停用分支誤送預設值」這種迴歸會綠燈放行
-5. 設定永不到達時仍會回應（腳本會即時造一個「只有 inject.js、沒有 bridge.js」的
+6. 設定永不到達時仍會回應（腳本會即時造一個「只有 inject.js、沒有 bridge.js」的
    擴充變體來複現這個失敗模式；修正前這裡會永久懸掛）
 
-第 3、4 項需要 extension id，靠讀 `chrome://extensions` 的 shadow DOM 取得
+第 3～5 項需要 extension id，靠讀 `chrome://extensions` 的 shadow DOM 取得
 （這個擴充沒有 service worker，沒有更現成的路徑）。**這條路徑綁死 Chrome 內部 UI
 的自訂元素名稱，Chrome 改版重構就會斷** —— 斷掉時的症狀是第 3 項拋例外，
 不會誤判成 PASS。
