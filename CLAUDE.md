@@ -14,6 +14,9 @@ Manifest V3、純原生 JS。無 build 工具、無套件管理器、無測試�
 
 ```
 geo-mock/
+├─ README.md          # 對外簡介（第一版能跑後補安裝/使用說明）
+├─ SPEC.md            # 功能規格
+├─ CLAUDE.md          # 本檔：架構約束與開發流程
 ├─ manifest.json
 ├─ inject.js          # world: MAIN, run_at: document_start — 實際覆寫 geolocation
 ├─ bridge.js          # world: ISOLATED, run_at: document_start — 讀 storage 推給 inject
