@@ -16,6 +16,10 @@ const GEO_MOCK_I18N = (() => {
 
   // key 命名以「哪一塊 + 做什麼」為準，不要用文字本身當 key ——
   // 文案改了 key 就得跟著改，兩邊很容易漂掉。
+  //
+  // **這裡每一句都會出現在使用者眼前**：不要寫 SPEC.md／CLAUDE.md、檔名、
+  // 「第幾版」、「尚未實作」，也不要寫 service worker、content script 這類
+  // 內部術語。開發筆記寫在註解或 .md 裡，不要漏到介面上。
   const STRINGS = {
     'zh-TW': {
       switchTitle: '啟用／停用定位覆寫',
@@ -75,7 +79,7 @@ const GEO_MOCK_I18N = (() => {
       noCoordsYet: '還沒讀到目前座標，等一下再試',
       modeFixedSet: '固定模式',
       modeJitterSet: '抖動模式，半徑 {0} m',
-      noWorker: 'service worker 沒有回應',
+      noWorker: '擴充沒有回應，到 chrome://extensions 重新載入後再試一次',
       noQuery: '查詢字串不見了',
       httpError: 'Nominatim 回應 {0}',
       timeout: '連線逾時',
@@ -98,7 +102,7 @@ const GEO_MOCK_I18N = (() => {
       radiusName: '抖動半徑',
       radiusHint: '公尺，上限 {0}（100 公里）。抖動模式下以上面的座標為中心，每次定位在這個半徑內隨機取一點',
       saveButton: '儲存',
-      optionsFooter: 'altitude、heading、speed 等欄位尚未實作（見 SPEC.md 第三版）。模式切換（固定／抖動）在 popup。',
+      optionsFooter: '模式切換（固定／抖動）與「這個網站不要覆寫」在工具列圖示的面板裡。',
       pasteBadFormat: '認不得這個格式，預期「緯度, 經度」',
       pasteSplit: '已拆進下面兩欄，記得按儲存',
       notANumber: '{0} 不是有效的數字',
@@ -162,7 +166,7 @@ const GEO_MOCK_I18N = (() => {
       noCoordsYet: 'Current coordinates not loaded yet, try again in a moment',
       modeFixedSet: 'Fixed mode',
       modeJitterSet: 'Jitter mode, radius {0} m',
-      noWorker: 'No response from the service worker',
+      noWorker: 'The extension did not respond — reload it from chrome://extensions and try again',
       noQuery: 'The query string went missing',
       httpError: 'Nominatim responded {0}',
       timeout: 'Connection timed out',
@@ -184,7 +188,7 @@ const GEO_MOCK_I18N = (() => {
       radiusName: 'Jitter radius',
       radiusHint: 'Metres, up to {0} (100 km). In jitter mode each fix lands somewhere inside this radius around the coordinates above',
       saveButton: 'Save',
-      optionsFooter: 'altitude, heading and speed are not implemented yet (see SPEC.md, third pass). The fixed/jitter switch lives in the popup.',
+      optionsFooter: 'The fixed/jitter switch and "Don\'t override this site" live in the toolbar popup.',
       pasteBadFormat: 'Unrecognised format, expected "latitude, longitude"',
       pasteSplit: 'Split into the two fields below — remember to save',
       notANumber: '{0} is not a valid number',

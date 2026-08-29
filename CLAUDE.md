@@ -77,6 +77,11 @@ geo-mock/
   `makeNoBridgeVariant()` 會把 `name` 抄進變體 manifest，而變體目錄沒有 `_locales`，
   Chrome 會整個拒絕載入它 —— 最後一項會用「變體沒載入」這個跟真正問題無關的理由失敗。
   第 1 項靜態斷言守著這條
+- **`i18n.js` 的字串表是給使用者看的，不是開發筆記**：不要寫 SPEC.md／CLAUDE.md、
+  檔名、「第幾版」、「尚未實作」，也不要寫 service worker、content script 這類
+  內部術語。踩過一次：options 頁的 footer 曾經寫著「altitude、heading、speed
+  等欄位尚未實作（見 SPEC.md 第三版）」，使用者不知道 SPEC.md 是什麼，而那句
+  在欄位改標「未排程」之後連指向都錯了。
 - **`inject.js` 的 console 訊息固定用中文，不做 i18n**：它跑在 MAIN world，拿不到
   字串表也拿不到 storage。要翻譯就得把譯文塞進推送的設定裡，不值得
 - **地址查詢必須跑在 service worker，不能搬回 popup**：popup 點到外面就整個銷毀，
