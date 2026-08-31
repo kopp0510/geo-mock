@@ -147,7 +147,7 @@ geo-mock/
    `accept-language`、寫進去的快取鍵三者全是英文，而使用者選的是繁中。
 
 ## 開發流程（每個功能段落依序走）
-<!-- dd-loop-version: 6step；供 /dd-init 判斷是否提議升級，勿刪 -->
+<!-- dd-loop-version: 8step；供 /dd-init 判斷是否提議升級，勿刪 -->
 
 1. **實作功能 + 首輪測試通過**（本專案無測試框架 → 退化為「擴充能載入且手動走過該功能」，
    不可帶紅燈進 commit）
@@ -168,6 +168,19 @@ geo-mock/
      「識別要求怎麼滿足的」；那條「未解事項」已結案）
 
 6. **再 commit**（最終版本）
+7. **沉澱本輪所學**（有才做）— 本輪若留下踩雷、指令或慣例，用
+   claude-md-management plugin 的 /revise-claude-md 寫進 CLAUDE.md；
+   它會先列出建議、等你同意才寫檔。沒有值得留的就跳過，不硬湊
+8. **評分 & 修正本輪動過的 CLAUDE.md** — 第一個動作是算範圍，不是開始審：
+
+   ```bash
+   { git show --name-only --pretty=format: HEAD; git status --porcelain | awk '{print $NF}'; } \
+     | grep 'CLAUDE\.md$' | sort -u
+   ```
+
+   算出幾份就只審那幾份（用 claude-md-improver）。該 skill 的 Phase 1 寫的是
+   「find 全部」，不先算範圍就會把本輪沒動到的那份也審進去（只改了根目錄那份，
+   卻連 tools/CLAUDE.md 一起掃）。範圍是空的才跳過
 
 驗證不過 → 修完重跑步驟 5，不可帶著紅燈進步驟 6。
 
@@ -234,3 +247,6 @@ geo-mock/
   （用 claude-md-management plugin 的 /revise-claude-md 或手動）
 - SPEC.md 的決策若在實作中被推翻（例如 Nominatim 擋擴充、改用 LocationIQ），
   同批更新 SPEC.md，不要讓規格與實作分岔
+- 步驟 7 處理的是「本輪學到什麼」，與上一條的「程式碼改了所以文件要同步」是兩件事
+- **步驟 7 跳過不代表步驟 8 跳過**：步驟 2、6 被 pre-commit gate 逼著更新的 CLAUDE.md
+  也要進步驟 8 的範圍 — gate 只確認「有寫」、不確認「寫得對」
