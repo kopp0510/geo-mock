@@ -172,7 +172,7 @@ class MainWindow(QMainWindow):
         self.lat = QLineEdit(DEFAULT_LAT)
         self.lng = QLineEdit(DEFAULT_LNG)
         # 貼上「25.033964, 121.564468」整串時自動拆進兩欄 ——
-        # Google Maps 右鍵複製出來就是這個格式，跟擴充的 options 頁行為一致。
+        # Google Maps 右鍵複製出來就是這個格式。
         #
         # 用 editingFinished 而不是 textChanged：後者會在打字打到一半就拆。
         # 手動輸入「25.033964, 1」的當下 parse 就成功了，欄位會被就地改寫成

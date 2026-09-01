@@ -60,7 +60,8 @@
 
 ## 與上層的關係
 
-- `cli.py` 的 `SHOTS_DIR` 指向 **repo 根目錄**的 `.screenshots/`（已 gitignore），
-  不是 `simulator/` 底下。跟 `../../tools/verify.js` 的截圖放同一處
-- `providers/extension.py` 指的是 `../../extension/` 那個 Chrome 擴充，
-  目前只是介面殼，沒有實際串接
+- `cli.py` 的 `SHOTS_DIR` 指向 **repo 根目錄**的 `.screenshots/`（已 gitignore）。
+  `REPO_ROOT` 是從 `gpssim/cli.py` 往上兩層 —— `simulator/` 那一層拿掉之後改過的，
+  再搬動目錄要記得跟著改
+- `providers/` 底下只有 CDP 與 OS 兩種；OS 那個在所有平台都回不支援，
+  但要講得出理由（見該層 CLAUDE.md）

@@ -6,7 +6,7 @@ import re
 EARTH_RADIUS_M = 6371000.0
 
 # 「25.033964, 121.564468」——Google Maps 右鍵複製出來的格式。
-# 逗號或空白都收，位數不限（擴充那邊踩過被截斷的雷，見 extension/options.js）。
+# 逗號或空白都收，位數不限 —— Google Maps 複製出來的位數很長，截斷會失準。
 _PAIR = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$")
 
 

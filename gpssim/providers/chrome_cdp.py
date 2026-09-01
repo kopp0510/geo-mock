@@ -1,8 +1,8 @@
 """Browser-level provider：CDP 的 Emulation.setGeolocationOverride。
 
 這是 DevTools「Sensors → Location」面板背後的同一支命令。覆寫發生在 Blink 內部，
-所以頁面的 JS 看不出來、也繞不過去——與 geo-mock 擴充在頁面裡改
-`navigator.geolocation` 的做法有本質差別（計畫 §8）。
+所以頁面的 JS 看不出來、也繞不過去 —— 在頁面裡改 `navigator.geolocation`
+的那種做法會被 `Geolocation.prototype` 繞過，這裡不會（計畫 §8）。
 """
 
 import base64
@@ -96,7 +96,7 @@ class ChromeCdpProvider(LocationProvider):
         """開一個新分頁、套上覆寫、導到 url，回傳 sessionId。
 
         `origin` 是要預先授權 geolocation 的來源（計畫 §10：真的授權，
-        不是像擴充那樣騙 `permissions.query`）。
+        不是騙頁面的 `permissions.query`）。
         """
         self._flush()
         if origin:
@@ -187,7 +187,7 @@ class ChromeCdpProvider(LocationProvider):
         session, target = params.get("sessionId"), info.get("targetId")
 
         # **只碰 page / iframe。** auto-attach 連 service_worker、worker、
-        # browser_ui、擴充的 background_page 都會送過來，而那些 target 收得下
+        # browser_ui、background_page 都會送過來，而那些 target 收得下
         # session 卻不見得會回覆 `Page.enable` —— 送過去就是無限等待，
         # 而且頁面的事件流讓 socket 一直有東西可讀，連 socket 逾時都不會發生。
         # 它們本來也沒有定位可以覆寫。

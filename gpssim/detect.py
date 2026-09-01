@@ -52,7 +52,7 @@ class Environment:
 def find_chrome():
     """回傳 Chrome 執行檔路徑，找不到回 None。
 
-    `CHROME_BIN` 優先——跟 tools/verify.js 同一個慣例，方便指定特定版本。
+    `CHROME_BIN` 優先，方便指定特定版本的 Chrome。
     """
     override = os.environ.get("CHROME_BIN")
     if override:

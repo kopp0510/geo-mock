@@ -10,9 +10,8 @@
 | `base.py` | — | `LocationProvider` 介面：`is_supported()` / `start()` / `stop()`，以及 `Support(ok, reason)` |
 | `chrome_cdp.py` | 瀏覽器 | **唯一實作**。CDP `Emulation.setGeolocationOverride` |
 | `os_native.py` | OS | 所有平台都回不支援，但每個平台要講得出**具體理由** |
-| `extension.py` | 頁面 JS | `../../../extension/` 那個擴充。尚未串接，只有殼 |
 
-`__init__.py` 的 `ORDER` 是計畫的優先順序（OS → CDP → 擴充），
+`__init__.py` 的 `ORDER` 是計畫的優先順序（OS → CDP），
 `pick()` 走第一個說自己支援的，全都不支援回 `None`。
 
 ## 此層慣例
@@ -30,7 +29,7 @@
    （`cdp._dispatch()` 現在會對這種情況丟 `CDPError`，不讓它再靜默一次）
 
 2. **只碰 `page` / `iframe` 型別的 target**。auto-attach 會把 `service_worker`、
-   `worker`、`browser_ui`、擴充的 `background_page` 一起送過來，而那些 target
+   `worker`、`browser_ui`、`background_page` 一起送過來，而那些 target
    **收得下 session 卻不見得會回覆 `Page.enable`** —— 送過去就是永遠等下去。
    踩過一次：GUI 按下開始後整個介面轉圈不動，Chrome 卻一切正常
    （手動連上去 `getCurrentPosition` 0.0 秒就回正確座標），因為卡住的是 client。

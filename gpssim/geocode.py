@@ -11,7 +11,7 @@ Requirements
   · 必須提供可識別應用程式的 User-Agent，政策原文明寫
     「stock User-Agents as set by http libraries will not do」
                              → `USER_AGENT`。Python 這邊可以直接設 header，
-                               不必像擴充那樣繞 declarativeNetRequest
+                               （瀏覽器裡的 fetch 設不了這個 header，Python 可以）
   · 必須顯示出處              → `ATTRIBUTION`，介面上要印出來
 
 Unacceptable Use（政策原文：strictly forbidden and will get you banned）
@@ -21,7 +21,7 @@ Unacceptable Use（政策原文：strictly forbidden and will get you banned）
   · 重複送同一個 query 會被歸類為 faulty client → 快取 + 同字串去重
 
 自動化測試也**不要**拿真的查詢去跑迴圈 —— 那正是政策禁止的行為。
-（擴充那邊同樣的理由：`tools/CLAUDE.md` 的「為什麼不驗地址搜尋」）
+冒煙測試要用已經在快取裡的字串。
 """
 
 import json

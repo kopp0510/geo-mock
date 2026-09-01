@@ -2,10 +2,9 @@
 
 計畫 §18 的分層：Core Simulator 只認這個介面，換 OS 或換瀏覽器時不必動它。
 
-三個實作：
+兩個實作：
 - `ChromeCdpProvider`  — browser-level，目前唯一能用的
 - `OsNativeProvider`   — OS-level，各平台情況不同，多半不支援
-- `ExtensionProvider`  — browser-level 的另一條路（geo-mock 擴充），尚未接上
 """
 
 from abc import ABC, abstractmethod

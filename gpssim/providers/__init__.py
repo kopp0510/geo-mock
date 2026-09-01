@@ -1,16 +1,15 @@
-"""Location provider 們。優先順序即計畫 §4 的順序。"""
+"""Location provider 們。優先順序即計畫 §4 的順序（OS 層 → 瀏覽器層）。"""
 
 from .base import LocationProvider, Support
 from .chrome_cdp import ChromeCdpProvider
-from .extension import ExtensionProvider
 from .os_native import OsNativeProvider
 
 # 由高到低。`pick()` 走第一個說自己支援的。
-ORDER = [OsNativeProvider, ChromeCdpProvider, ExtensionProvider]
+ORDER = [OsNativeProvider, ChromeCdpProvider]
 
 __all__ = [
     "LocationProvider", "Support", "ChromeCdpProvider",
-    "ExtensionProvider", "OsNativeProvider", "ORDER", "pick", "survey",
+    "OsNativeProvider", "ORDER", "pick", "survey",
 ]
 
 

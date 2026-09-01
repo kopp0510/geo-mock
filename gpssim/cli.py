@@ -21,7 +21,8 @@ from .providers.chrome_cdp import ChromeCdpProvider
 from .route import Route, RouteError
 from .server import TestPageServer
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# gpssim/cli.py -> gpssim -> repo 根目錄（simulator/ 那一層拿掉之後少一層）
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS_DIR = os.path.join(REPO_ROOT, ".screenshots")
 
 LIMITATIONS = [

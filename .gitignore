@@ -7,9 +7,6 @@
 # 驗證截圖
 .screenshots/
 
-# Chrome 載入未封裝擴充時，替 declarativeNetRequest 規則產生的索引
-_metadata/
-
-# Python venv（simulator/）
+# Python
 .venv/
 __pycache__/
