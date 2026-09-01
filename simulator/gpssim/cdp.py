@@ -21,6 +21,12 @@ class CDPError(RuntimeError):
 
 
 class CDP:
+    #: 單一指令等回覆的上限。**這不是保險絲，是必要的**：`_wait_for` 是
+    #: 「一直讀到自己的 id 為止」，而頁面的事件流會讓 `recv()` 一直有東西可讀，
+    #: 所以 socket 自己的逾時永遠不會觸發。少了這道期限，一個不回覆的指令
+    #: （例如對 worker 送 Page.enable）會讓整支程式無聲地掛死。
+    COMMAND_TIMEOUT = 30
+
     def __init__(self, ws_url, timeout=60):
         # suppress_origin 是必要的，不是調校：websocket-client 預設會送 Origin header，
         # 而 Chrome 會回 403「Rejected an incoming WebSocket connection from the ... origin」。
@@ -87,13 +93,32 @@ class CDP:
             pass
 
     def _wait_for(self, message_id, method):
-        while True:
-            raw = json.loads(self.ws.recv())
-            if raw.get("id") == message_id:
-                if "error" in raw:
-                    raise CDPError(f"{method} -> {raw['error']}")
-                return raw.get("result", {})
-            self._dispatch(raw)
+        """讀到自己的回覆為止，但不超過 COMMAND_TIMEOUT。
+
+        期限要自己算，不能靠 socket 的逾時：頁面的事件流會讓 `recv()` 一直
+        有東西可讀，socket 逾時永遠不會觸發，於是一個不回覆的指令就掛死整支程式。
+        """
+        deadline = time.time() + self.COMMAND_TIMEOUT
+        original = self.ws.gettimeout()
+        try:
+            while True:
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    raise CDPError(
+                        f"{method} 送出後 {self.COMMAND_TIMEOUT} 秒沒有回覆 "
+                        f"(id={message_id})；通常是指令送到了不支援它的 target")
+                self.ws.settimeout(min(remaining, original or remaining))
+                try:
+                    raw = json.loads(self.ws.recv())
+                except websocket.WebSocketTimeoutException:
+                    continue    # 回頭檢查期限，由上面那個分支報錯
+                if raw.get("id") == message_id:
+                    if "error" in raw:
+                        raise CDPError(f"{method} -> {raw['error']}")
+                    return raw.get("result", {})
+                self._dispatch(raw)
+        finally:
+            self.ws.settimeout(original)
 
     def _dispatch(self, raw):
         if "id" in raw:

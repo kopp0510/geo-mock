@@ -183,8 +183,16 @@ class ChromeCdpProvider(LocationProvider):
         內層的等待會先讀到外層正在等的那則回覆並丟掉，外層就永遠等不到，
         症狀是毫無頭緒的 WebSocketTimeoutException。踩過一次。
         """
-        session = params.get("sessionId")
-        target = (params.get("targetInfo") or {}).get("targetId")
+        info = params.get("targetInfo") or {}
+        session, target = params.get("sessionId"), info.get("targetId")
+
+        # **只碰 page / iframe。** auto-attach 連 service_worker、worker、
+        # browser_ui、擴充的 background_page 都會送過來，而那些 target 收得下
+        # session 卻不見得會回覆 `Page.enable` —— 送過去就是無限等待，
+        # 而且頁面的事件流讓 socket 一直有東西可讀，連 socket 逾時都不會發生。
+        # 它們本來也沒有定位可以覆寫。
+        if info.get("type") not in ("page", "iframe"):
+            return
         if session and target and target not in self._targets:
             self._pending.append((session, target))
 
