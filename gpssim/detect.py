@@ -6,6 +6,7 @@
 
 import os
 import platform
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -72,10 +73,48 @@ def find_chrome():
     return None
 
 
+_VERSION_DIR = re.compile(r"^\d+(\.\d+)+$")
+
+
+def _windows_chrome_version(path):
+    """Windows 上改用別的辦法問版本。
+
+    **`chrome.exe --version` 在 Windows 印不出東西** —— Chrome 是 GUI 子系統的
+    程式，不會接上父行程的 console，`capture_output` 收到的是空字串。
+    macOS / Linux 沒這個問題。實測踩過：CI 上因此判定「問不到版本」而整個拒跑。
+
+    兩條路，先快的：
+    1. 安裝目錄底下會有一個以版本號命名的資料夾
+       （`...\Application\151.0.7922.174\`），純讀檔案系統，不開行程
+    2. 退回 PowerShell 讀檔案的版本資訊
+    """
+    folder = os.path.dirname(path)
+    try:
+        versions = [name for name in os.listdir(folder) if _VERSION_DIR.match(name)]
+    except OSError:
+        versions = []
+    if versions:
+        # 同時裝了多版時取最大的，跟 chrome.exe 實際會載入的一致
+        newest = max(versions, key=lambda v: [int(n) for n in v.split(".")])
+        return f"Google Chrome {newest}"
+
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             f"(Get-Item '{path}').VersionInfo.ProductVersion"],
+            capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    version = (out.stdout or "").strip()
+    return f"Google Chrome {version}" if version else None
+
+
 def chrome_version(path):
-    """跑 `--version` 拿版本字串。拿不到回 None，不丟例外。"""
+    """回版本字串，問不到回 None（**問不到不代表不能用**，見 provider）。"""
     if not path:
         return None
+    if platform.system() == "Windows":
+        return _windows_chrome_version(path)
     try:
         out = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=15)
     except (OSError, subprocess.SubprocessError):

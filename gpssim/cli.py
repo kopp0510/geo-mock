@@ -72,9 +72,12 @@ def cmd_search(args):
 
 
 def cmd_detect(_args):
+    """印環境與 provider 支援情形。全都不支援時回 2 —— 這樣 CI 與腳本
+    在第一關就知道這台機器不行，不必等到真的去開瀏覽器才失敗。"""
     environment = detect.detect()
-    print(report.render_survey(environment, providers.survey()))
-    return 0
+    survey = providers.survey()
+    print(report.render_survey(environment, survey))
+    return 0 if any(support for _, support in survey) else 2
 
 
 def _run(target, with_maps, keep_open):

@@ -38,10 +38,11 @@ class ChromeCdpProvider(LocationProvider):
         path = self.executable or detect.find_chrome()
         if not path:
             return Support(False, "找不到 Chrome。設 CHROME_BIN 或安裝 Google Chrome。")
+        # **問不到版本不該擋著不讓跑。** 版本只是報告上的資訊，能不能用取決於
+        # chrome.exe 在不在。早期這裡問不到就回 False，結果 Windows 上因為
+        # `--version` 印不出東西而整個拒跑 —— 明明 Chrome 好好地裝在那裡。
         version = detect.chrome_version(path)
-        if not version:
-            return Support(False, f"Chrome 在 {path}，但問不到版本，無法確認可用。")
-        return Support(True, version)
+        return Support(True, version or f"Chrome 在 {path}（版本不明）")
 
     # ---- 生命週期 ------------------------------------------------------
 

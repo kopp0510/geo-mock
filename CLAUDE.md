@@ -134,10 +134,18 @@ gps-simulator/             ← repo 根目錄就是專案本體
    `cli.main()` 與 `gui.main()` 開頭都要叫 `enable_utf8_output()`，**別拿掉**。
    實測：Windows CI 的 `detect` 就是這樣掛的，連 Chrome 都還沒開。
 
-2. Chrome 路徑清單是對的 —— CI 上在 `C:\Program Files\Google\Chrome\Application\chrome.exe`
+2. **`chrome.exe --version` 在 Windows 印不出東西**。Chrome 是 GUI 子系統的程式，
+   不接父行程的 console，`capture_output` 收到空字串。所以 Windows 走
+   `_windows_chrome_version()`：先讀安裝目錄底下那個以版本號命名的資料夾，
+   再退回 PowerShell 讀檔案版本資訊。
+   **而且「問不到版本」不該擋著不讓跑** —— 版本只是報告上的資訊。
+   早期 `is_supported()` 問不到就回 False，Windows 上因此整個拒跑，
+   明明 Chrome 好好地裝在那裡。
+
+3. Chrome 路徑清單是對的 —— CI 上在 `C:\Program Files\Google\Chrome\Application\chrome.exe`
    找得到（實測 Chrome 151）。
 
-3. **還沒驗過的**：關閉時 `process.terminate()` 在 Windows 只殺父程序，
+4. **還沒驗過的**：關閉時 `process.terminate()` 在 Windows 只殺父程序，
    renderer 子程序可能留著、temp profile 刪不掉。CI 有一步專門檢查這件事。
 
 ## 已知限制（刻意不修）

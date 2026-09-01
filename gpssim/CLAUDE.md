@@ -45,6 +45,8 @@
 - **會啟動外部程序的流程，`start()` 一定要在 `try` 裡**，清理放 `finally`。
   `cli._run` 踩過：`provider.start()` 寫在 try 外面，Chrome 起來但 CDP 接不上時
   `stop()` 不會被呼叫，Chrome 跟 temp profile 就留在系統上
+- **`detect.py` 的 `chrome_version()` 分平台**：Windows 的 `chrome.exe --version`
+  印不出東西，要改讀安裝目錄的版本資料夾或 PowerShell。**問不到版本不等於不能用**
 - **`detect.py` 只回報看到什麼，不下支不支援的結論**。能不能用是各 provider
   `is_supported()` 的事 —— 這是為了避免寫出 `if Windows: assume supported`
 - **地址查詢只能由使用者的明確動作觸發**（Enter 或按鈕）。綁 `textChanged`
