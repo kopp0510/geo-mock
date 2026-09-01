@@ -6,9 +6,14 @@ name: Build & verify
 
 on:
   push:
-    branches: [main]
-    tags: ['v*']          # 打 tag 就發一版到 Releases
+    branches: [main]      # 只驗程式碼
+    tags: ['v*']          # 驗 + 打包 + 發一版到 Releases
   workflow_dispatch:
+
+# 同一個 ref 連續推的話，舊的那輪直接取消，不要排隊佔 runner
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # 從原始碼驗一次。這是「程式對不對」的關卡，跟打包無關。
@@ -52,8 +57,13 @@ jobs:
           path: .screenshots/
           if-no-files-found: warn
 
+  # **只在打 tag 時跑。** 推 main 也打包的話，一次發版會跑兩輪完全一樣的
+  # 打包（推 main 一次、推 tag 一次），三個平台都白跑一遍。
+  # 代價是打包壞掉要到打 tag 才發現 —— 但那時自我驗證會擋下發布，
+  # 修完重打一個 tag 就好，不會有壞檔案流出去。
   build-windows:
     needs: smoke
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     timeout-minutes: 25
     # 預設的 GITHUB_TOKEN 是唯讀的，少了這行建 release 會 403
@@ -67,10 +77,9 @@ jobs:
         with:
           enable-cache: true
 
-      # 版本號的唯一來源是 git tag。不是 tag 的話就維持原始碼裡的 0.0.0+dev，
-      # 這樣拿到執行檔的人一眼看得出「這不是 Releases 上的正式版」。
+      # 版本號的唯一來源是 git tag。原始碼裡固定是 0.0.0+dev，
+      # 拿到執行檔的人一眼看得出「這不是 Releases 上的正式版」。
       - name: 從 tag 寫入版本號
-        if: startsWith(github.ref, 'refs/tags/v')
         run: uv run python set_version.py ${{ github.ref_name }}
 
       - name: 打包
@@ -116,7 +125,6 @@ jobs:
           if-no-files-found: error
 
       - name: 發布到 Releases
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: dist/GPS-Simulator.exe
@@ -124,6 +132,8 @@ jobs:
           body_path: .github/release-notes.md
 
   build-macos:
+    needs: smoke
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     permissions:
@@ -150,10 +160,9 @@ jobs:
         with:
           enable-cache: true
 
-      # 版本號的唯一來源是 git tag。不是 tag 的話就維持原始碼裡的 0.0.0+dev，
-      # 這樣拿到執行檔的人一眼看得出「這不是 Releases 上的正式版」。
+      # 版本號的唯一來源是 git tag。原始碼裡固定是 0.0.0+dev，
+      # 拿到執行檔的人一眼看得出「這不是 Releases 上的正式版」。
       - name: 從 tag 寫入版本號
-        if: startsWith(github.ref, 'refs/tags/v')
         run: uv run python set_version.py ${{ github.ref_name }}
 
       - name: 打包
@@ -184,7 +193,6 @@ jobs:
           if-no-files-found: error
 
       - name: 發布到 Releases
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: GPS-Simulator-macos-${{ matrix.arch }}.zip

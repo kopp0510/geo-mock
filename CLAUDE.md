@@ -173,6 +173,18 @@ git push origin v0.3.0
 ```
 
 CI 在打包前跑 `set_version.py`，把版本灌進 `pyproject.toml` 與 `__version__`。
+
+**CI 的分工**（`.github/workflows/windows.yml`）：
+
+| 觸發 | 跑什麼 |
+|---|---|
+| 推 `main` | 只有 `smoke` —— 在 Windows 上從原始碼驗一次 |
+| 推 `v*` tag | `smoke` + 三個平台打包 + 發布到 Releases |
+
+**打包的 job 有 `if: startsWith(github.ref, 'refs/tags/v')`，別拿掉** ——
+少了它，一次發版會跑兩輪一模一樣的打包（推 main 一次、推 tag 一次），
+三個平台都白跑。代價是打包壞掉要到打 tag 才發現，但那時自我驗證會擋下發布，
+修完重打一個 tag 就好，不會有壞檔案流出去。
 **不要手動改那兩個地方** —— 多一個要記得改的地方就多一個會忘的地方，
 這支腳本存在的理由就是修掉那個不一致（tag 已經 v0.2.0，那兩處還停在 0.1.0）。
 
