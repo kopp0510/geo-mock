@@ -128,11 +128,15 @@ gps-simulator/             ← repo 根目錄就是專案本體
 
 ## Windows 上的坑（macOS 開發、CI 實測出來的）
 
-1. **`stdout` 預設編碼吃不下中文，程式會直接崩潰**。Windows 的輸出編碼跟著系統
-   地區設定走（CI 上是 cp1252），第一個 `print` 就丟
-   `UnicodeEncodeError: 'charmap' codec can't encode`。
-   `cli.main()` 與 `gui.main()` 開頭都要叫 `enable_utf8_output()`，**別拿掉**。
-   實測：Windows CI 的 `detect` 就是這樣掛的，連 Chrome 都還沒開。
+1. **輸出有兩個坑，`enable_utf8_output()` 一次擋掉，別拿掉那行**：
+   - **編碼**：Windows 的輸出編碼跟著系統地區設定走（CI 上是 cp1252），
+     印中文會丟 `UnicodeEncodeError`。實測：Windows CI 的 `detect` 就是這樣掛的，
+     連 Chrome 都還沒開
+   - **根本沒有 stdout**：PyInstaller `--windowed` 的 exe 是 GUI 子系統，
+     沒有主控台，`sys.stdout` 是 `None`，`print()` 丟
+     `AttributeError: 'NoneType' object has no attribute 'write'`。
+     實測：打包版 `GPS-Simulator.exe detect` 一行沒印就非零結束。
+     導到 devnull 之後**看不到輸出但 exit code 是對的**，CI 就靠這個驗
 
 2. **`chrome.exe --version` 在 Windows 印不出東西**。Chrome 是 GUI 子系統的程式，
    不接父行程的 console，`capture_output` 收到空字串。所以 Windows 走

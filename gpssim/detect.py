@@ -77,7 +77,7 @@ _VERSION_DIR = re.compile(r"^\d+(\.\d+)+$")
 
 
 def _windows_chrome_version(path):
-    """Windows 上改用別的辦法問版本。
+    r"""Windows 上改用別的辦法問版本。
 
     **`chrome.exe --version` 在 Windows 印不出東西** —— Chrome 是 GUI 子系統的
     程式，不會接上父行程的 console，`capture_output` 收到的是空字串。

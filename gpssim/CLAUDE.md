@@ -51,8 +51,10 @@
   `is_supported()` 的事 —— 這是為了避免寫出 `if Windows: assume supported`
 - **地址查詢只能由使用者的明確動作觸發**（Enter 或按鈕）。綁 `textChanged`
   等於實作 auto-complete，Nominatim 政策明文禁止，會被封鎖
-- **`main()` 開頭一定要叫 `enable_utf8_output()`**（`__init__.py`）。Windows 的
-  stdout 預設編碼吃不下中文，第一個 `print` 就會丟 `UnicodeEncodeError` 讓程式崩潰
+- **`main()` 開頭一定要叫 `enable_utf8_output()`**（`__init__.py`）。它擋兩件事：
+  Windows 的預設編碼吃不下中文（`UnicodeEncodeError`），以及 PyInstaller
+  `--windowed` 的 exe 根本沒有 stdout（`sys.stdout is None`，`print` 丟
+  `AttributeError`）。兩個都是第一個 `print` 就死，實測都踩過
 - 註解寫繁體中文，跟隨 repo 既有慣例
 - 沒有單元測試框架。驗證靠 `cli.py` 的 `test` / `maps` 實際開瀏覽器跑
 - **GUI 的阻塞動作全在 worker thread**，而且 provider 從建立到 `stop()` 必須

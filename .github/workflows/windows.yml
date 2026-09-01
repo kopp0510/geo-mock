@@ -86,10 +86,13 @@ jobs:
           $exe = "dist\GPS-Simulator.exe"
           if (-not (Test-Path $exe)) { throw "沒有產出 $exe" }
           Write-Host "產出 $exe（$([math]::Round((Get-Item $exe).Length / 1MB, 1)) MB）"
+          # --windowed 的 exe 是 GUI 子系統，沒有主控台，所以這裡**看不到輸出**，
+          # 只能看 exit code。0 = 全過，那就夠證明資源檔打包正確了。
           & $exe detect
-          if ($LASTEXITCODE -ne 0) { throw "打包版 detect 失敗" }
+          if ($LASTEXITCODE -ne 0) { throw "打包版 detect 失敗（exit $LASTEXITCODE）" }
           & $exe maps --coords "25.033964, 121.564468"
-          if ($LASTEXITCODE -ne 0) { throw "打包版 maps 失敗" }
+          if ($LASTEXITCODE -ne 0) { throw "打包版 maps 失敗（exit $LASTEXITCODE）" }
+          Write-Host "打包版 detect 與 maps 都回 0"
 
       - uses: actions/upload-artifact@v4
         with:
