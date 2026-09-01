@@ -126,6 +126,20 @@ gps-simulator/             ← repo 根目錄就是專案本體
    另外 Maps 載入時 URL 就已經帶著 `/@lat,lng`（IP 推測的位置），
    所以要等它**變成目標附近**，不能一看到 `/@` 就收工。
 
+## Windows 上的坑（macOS 開發、CI 實測出來的）
+
+1. **`stdout` 預設編碼吃不下中文，程式會直接崩潰**。Windows 的輸出編碼跟著系統
+   地區設定走（CI 上是 cp1252），第一個 `print` 就丟
+   `UnicodeEncodeError: 'charmap' codec can't encode`。
+   `cli.main()` 與 `gui.main()` 開頭都要叫 `enable_utf8_output()`，**別拿掉**。
+   實測：Windows CI 的 `detect` 就是這樣掛的，連 Chrome 都還沒開。
+
+2. Chrome 路徑清單是對的 —— CI 上在 `C:\Program Files\Google\Chrome\Application\chrome.exe`
+   找得到（實測 Chrome 151）。
+
+3. **還沒驗過的**：關閉時 `process.terminate()` 在 Windows 只殺父程序，
+   renderer 子程序可能留著、temp profile 刪不掉。CI 有一步專門檢查這件事。
+
 ## 已知限制（刻意不修）
 
 - **Chrome 每換一次 override，都會先對 `watchPosition` 發一個

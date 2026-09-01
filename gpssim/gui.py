@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import detect, formats, geocode, providers, report, verify
+from . import enable_utf8_output
 from .coords import InvalidCoordinate, parse_pair, validate
 from .formats import RouteFileError
 from .player import RoutePlayer
@@ -476,6 +477,7 @@ class MainWindow(QMainWindow):
 
 
 def main(argv=None):
+    enable_utf8_output()    # 直接跑 `python -m gpssim.gui` 時也要，理由同 cli
     app = QApplication(argv or sys.argv[:1])
     app.setApplicationName("GPS Simulator")
     window = MainWindow()

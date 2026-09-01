@@ -14,6 +14,7 @@ import sys
 import time
 
 from . import detect, formats, geocode, providers, report, verify
+from . import enable_utf8_output
 from .chrome import ChromeLaunchError
 from .coords import InvalidCoordinate, haversine, parse_pair, validate
 from .formats import RouteFileError
@@ -302,6 +303,7 @@ def build_parser():
 
 
 def main(argv=None):
+    enable_utf8_output()    # Windows 的預設編碼吃不下中文，見該函式的說明
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
