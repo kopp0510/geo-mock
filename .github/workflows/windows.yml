@@ -71,3 +71,42 @@ jobs:
           name: screenshots
           path: .screenshots/
           if-no-files-found: warn
+
+  # smoke 綠了才打包 —— 沒驗過的東西不該被下載
+  build:
+    needs: smoke
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: 打包成單一 exe
+        shell: pwsh
+        run: |
+          # --windowed：雙擊時不要跳出黑色終端機視窗
+          # --add-data：測試頁是執行時要讀的檔案，不打包進去 Milestone 1 會失敗
+          #             （Windows 的分隔符號是分號，不是冒號）
+          uv run --extra gui --with pyinstaller pyinstaller `
+            --onefile --windowed --noconfirm `
+            --name "GPS-Simulator" `
+            --add-data "gpssim/testpage;gpssim/testpage" `
+            launch.py
+
+      - name: 檢查產物
+        shell: pwsh
+        run: |
+          $exe = "dist\GPS-Simulator.exe"
+          if (-not (Test-Path $exe)) { throw "沒有產出 $exe" }
+          $size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
+          Write-Host "產出 $exe（$size MB）"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GPS-Simulator-windows
+          path: dist/GPS-Simulator.exe
+          if-no-files-found: error

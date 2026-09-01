@@ -145,8 +145,19 @@ gps-simulator/             ← repo 根目錄就是專案本體
 3. Chrome 路徑清單是對的 —— CI 上在 `C:\Program Files\Google\Chrome\Application\chrome.exe`
    找得到（實測 Chrome 151）。
 
-4. **還沒驗過的**：關閉時 `process.terminate()` 在 Windows 只殺父程序，
-   renderer 子程序可能留著、temp profile 刪不掉。CI 有一步專門檢查這件事。
+4. **收拾是乾淨的**（原本擔心 `process.terminate()` 在 Windows 只殺父程序）。
+   CI 專門檢查過：跑完 Milestone 1 與 2 之後「沒有殘留的 chrome 程序、
+   沒有殘留的 temp profile」。這條疑慮已排除，別再假設它有問題。
+
+Windows CI 的實測結果（`.github/workflows/windows.yml`）：
+
+```
+Platform:                    Windows 10.0.26100 (AMD64)
+Browser:                     Google Chrome 151.0.7922.174
+navigator.geolocation:       PASS  (0.00 m)
+Google Maps (geolocation):   PASS  (0.00 m)
+Google Maps (Your Location): PASS  (0.00 m)
+```
 
 ## 已知限制（刻意不修）
 
