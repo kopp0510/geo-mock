@@ -30,6 +30,17 @@ def render(environment, provider, support, checks=(), limitations=(), next_step=
         f"Google Maps (Your Location): {_status(by_name.get('Google Maps Your Location is near target'))}",
     ]
 
+    # 上面三行是計畫 §22 點名的欄位；其餘 check（例如路線）照樣列出來，
+    # 不然新增一種驗證就得改這裡的樣板，很容易忘記而讓結果靜默消失。
+    known = {
+        "navigator.geolocation returns simulated location",
+        "Google Maps receives simulated location",
+        "Google Maps Your Location is near target",
+    }
+    for check in checks:
+        if check.name not in known:
+            lines.append(f"{check.name + ':':<28} {_status(check)}")
+
     detail_lines = [f"  - {c.name}: {c.detail}" for c in checks if c.detail]
     if detail_lines:
         lines += ["", "Details:"] + detail_lines

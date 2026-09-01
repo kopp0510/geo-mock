@@ -12,7 +12,10 @@
 | `cdp.py` | CDP client：send / 事件派送 / pump | `websocket-client` |
 | `chrome.py` | 起獨立 profile 的 Chrome、等 DevToolsActivePort、收工刪 profile | `detect` |
 | `server.py` | 餵 `testpage/` 的本機 http server | 只有標準庫 |
-| `verify.py` | Milestone 1 / 2 的判定，回傳 `Check` | `coords` |
+| `route.py` | 路線模型、大圓內插、點到路線的距離 | `coords` |
+| `formats.py` | GPX / KML / GeoJSON / 純文字讀檔 | `coords` |
+| `player.py` | 按真實時間播放路線，暫停／繼續／停止 | provider |
+| `verify.py` | Milestone 1 / 2 與路線的判定，回傳 `Check` | `coords` / `player` |
 | `report.py` | 計畫 §22 的回報格式 | 無 |
 | `gui.py` | PySide6 介面。**選用相依**，沒裝 PySide6 也不影響其他模組 | 全部 + `cli` 的常數 |
 | `cli.py` | 入口，把上面兜起來 | 全部 |
@@ -24,6 +27,9 @@
   `providers` 用它們；`verify` / `report` 只認 provider 的公開方法與 `Check`；
   `cli` 在最上面。**不要讓下層 import 上層**
 - **判定一律比距離不比字串**（`coords.haversine`）。浮點尾數差一位不該算失敗
+- **路線的「算在哪裡」與「什麼時候送」要分開**：`route.py` 是純運算（可直接斷言，
+  不必開瀏覽器），`player.py` 才碰時鐘與執行緒。合在一起的話路線邏輯就只能
+  靠開瀏覽器驗
 - **狀態有五種，不可壓成 PASS/FAIL 兩種**：`PASS` / `FAIL` /
   `PERMISSION_DENIED`（權限問題，不是模擬失敗）/ `UNVERIFIED`（測不到）/ `SKIPPED`。
   把 `UNVERIFIED` report 成 `FAIL` 會讓「Maps 改版」看起來像「模擬壞了」，

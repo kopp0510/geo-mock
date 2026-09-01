@@ -54,3 +54,35 @@ def haversine(lat1, lng1, lat2, lng2):
         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng / 2) ** 2
     )
     return EARTH_RADIUS_M * 2 * math.asin(math.sqrt(a))
+
+
+def bearing(lat1, lng1, lat2, lng2):
+    """從點 1 看向點 2 的初始方位角，0~360 度，正北為 0。
+
+    大圓航線的方位角沿途會變，所以這是「初始」方位 —— 路線模擬每一段都重算。
+    """
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dlng = math.radians(lng2 - lng1)
+    y = math.sin(dlng) * math.cos(phi2)
+    x = math.cos(phi1) * math.sin(phi2) - math.sin(phi1) * math.cos(phi2) * math.cos(dlng)
+    return (math.degrees(math.atan2(y, x)) + 360) % 360
+
+
+def destination(lat, lng, bearing_deg, distance_m):
+    """從一點沿指定方位走指定距離之後的座標。
+
+    **路線內插一定要用這個，不可以「每秒把緯度加一個固定值」**（計畫 §15）：
+    同樣的經度差，在赤道是 111 km、在台北只有 101 km、在極區趨近 0，
+    直接加減會讓實際速度隨緯度飄掉。
+    """
+    angular = distance_m / EARTH_RADIUS_M
+    phi1, lambda1 = math.radians(lat), math.radians(lng)
+    theta = math.radians(bearing_deg)
+
+    phi2 = math.asin(math.sin(phi1) * math.cos(angular)
+                     + math.cos(phi1) * math.sin(angular) * math.cos(theta))
+    lambda2 = lambda1 + math.atan2(
+        math.sin(theta) * math.sin(angular) * math.cos(phi1),
+        math.cos(angular) - math.sin(phi1) * math.sin(phi2))
+    # 經度繞回 -180~180，跨換日線時才不會變成 190 這種值
+    return math.degrees(phi2), (math.degrees(lambda2) + 540) % 360 - 180

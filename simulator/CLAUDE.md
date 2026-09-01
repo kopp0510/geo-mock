@@ -23,7 +23,15 @@ uv run python -m gpssim.cli start --coords "25.033964, 121.564468"   # 開著不
 
 uv sync --extra gui                          # 裝 PySide6
 uv run python -m gpssim.cli gui              # 圖形介面
+
+# 路線（計畫 §14、§15）
+uv run python -m gpssim.cli route --file trip.gpx --kmh 50
+uv run python -m gpssim.cli route --waypoints "25.03,121.56; 25.04,121.57" --speed 30
 ```
+
+路線檔支援 `.gpx` `.kml` `.geojson` `.json` `.txt` `.csv`。
+`--loop --laps N` 繞圈，`--interval` 改更新間隔，`--maps` 順便開 Google Maps
+（只印觀察，不列入判定，理由見下方已知限制）。
 
 exit code：
 
@@ -53,6 +61,9 @@ gpssim/
 │  ├─ os_native.py    # 各平台都不支援，但要講得出理由
 │  └─ extension.py    # ../extension/ 那個擴充，尚未接上
 ├─ verify.py     # Milestone 1 / 2 的判定
+├─ route.py      # 路線模型與大圓內插。純運算，不碰瀏覽器也不碰時間
+├─ formats.py    # GPX / KML / GeoJSON / 純文字讀檔
+├─ player.py     # 按真實時間播放路線，可暫停／繼續／停止
 ├─ report.py     # 回報格式
 ├─ gui.py        # PySide6 介面。選用相依，`uv sync --extra gui` 才裝得到
 └─ cli.py        # 入口（含 `gui` 子指令）
@@ -99,12 +110,33 @@ gpssim/
    跟 code 2/3 分開。目前 CDP 走 `Browser.grantPermissions` 不會跳彈窗，
    但這條分流要留著 —— 哪天換 provider 就會用到。
 
-7. **Google Maps 的定位鈕沒有穩定 selector**，只能靠 `aria-label` 找。
+7. **內插一定要用 `coords.destination`（大圓），不可以「每秒把緯度加固定值」**。
+   實測：緯度 25 走正東 1000 m 需要 0.009923 度經度，緯度 70 需要 0.026294 度 ——
+   固定加值會讓實際速度隨緯度飄掉。計畫 §15 點名的就是這件事。
+
+8. **`Route.nearest_distance` 用點到線段的平面投影，不要改回沿線取樣**。
+   取樣版的誤差是「取樣間距的一半」，段長 5 km 取 64 點就有 39 公尺 ——
+   路線明明沒偏也會被判成偏掉。
+
+9. **Google Maps 的定位鈕沒有穩定 selector**，只能靠 `aria-label` 找。
    找不到時回報 **`UNVERIFIED` 不是 `FAIL`** —— 「測不到」跟「模擬失敗」是兩件事。
    另外 Maps 載入時 URL 就已經帶著 `/@lat,lng`（IP 推測的位置），
    所以要等它**變成目標附近**，不能一看到 `/@` 就收工。
 
 ## 已知限制（刻意不修）
+
+- **Chrome 每換一次 override，都會先對 `watchPosition` 發一個
+  `POSITION_UNAVAILABLE` 再發新位置**（同一毫秒）。這是 Chrome 的行為，擋不掉。
+  路線播放 40 拍就會夾 40 個假錯誤，驗證那端只計數不判失敗。
+  （靜置不動時是 0 錯誤 —— 那是 targetId 去重修好的部分，見 providers/CLAUDE.md）
+
+- **Google Maps 的藍點不會跟著模擬移動**，所以 `route --maps` 只印觀察、不判定。
+  實測三層：路線走完 1152 m，測試頁的 `watchPosition` 一路跟到終點（差 0.0 m），
+  但 Maps 的藍點停在按下定位鈕當下的位置，前後兩張截圖的藍點在同一個像素上；
+  同分頁重按定位鈕照樣不動；另開全新分頁才會更新，而且拿到的是快取的中途位置
+  （落在路線 700 m 處，當時 provider 已經在 1152 m 的終點）。
+  做成 UNVERIFIED 的話 `route --maps` 會永遠 exit 3，久了沒人看 exit code。
+  路線有沒有真的動，看 `Route playback follows the path` 那一項。
 
 - **GUI 沒有自動化測試進 repo**。驗證靠一支用完即丟的冒煙腳本：開真視窗、
   按開始、等三項 PASS、按停止、確認沒有殘留 Chrome，逐步截圖到 `.screenshots/`。
@@ -129,6 +161,5 @@ gpssim/
 
 ## 尚未做（依計畫的優先順序，撞到再做）
 
-Route / 速度 / bearing / GPX / KML / GeoJSON / Pause / Resume；
-Edge / Firefox / Safari；OS 層 provider。
-（PySide6 GUI 已完成 —— 計畫 §19 第三階段）
+Edge / Firefox / Safari（計畫 §16）；OS 層 provider；`ExtensionProvider` 串接。
+（PySide6 GUI 與路線模擬都已完成 —— 計畫 §19 第三階段、§14、§15）

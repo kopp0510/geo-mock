@@ -7,17 +7,23 @@
 放在 UI thread 會讓整個視窗在啟動 Chrome 的那幾秒鎖死。
 """
 
+import os
 import sys
 import threading
+import time
 
 from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMainWindow, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QDoubleSpinBox, QFileDialog, QGridLayout, QGroupBox,
+    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPlainTextEdit, QPushButton,
+    QVBoxLayout, QWidget,
 )
 
-from . import detect, providers, report, verify
+from . import detect, formats, providers, report, verify
 from .coords import InvalidCoordinate, parse_pair, validate
+from .formats import RouteFileError
+from .player import RoutePlayer
+from .route import Route, RouteError
 from .providers.chrome_cdp import ChromeCdpProvider
 from .server import TestPageServer
 
@@ -39,14 +45,34 @@ class SimulationWorker(QObject):
     failed = Signal(str)
     stopped = Signal()
 
-    def __init__(self, lat, lng, with_maps):
+    def __init__(self, lat, lng, with_maps, route=None):
         super().__init__()
         self.lat, self.lng, self.with_maps = lat, lng, with_maps
+        self.route = route
+        self.player = None
         self._stop = threading.Event()
 
     def request_stop(self):
         """由 UI thread 呼叫。只是掀旗子，實際收拾仍在 worker thread。"""
         self._stop.set()
+
+    def _play_route(self, provider):
+        """播放路線。進度直接更新狀態列 —— on_fix 跑在 player 自己的執行緒上，
+        只發 signal（Qt 會排隊送回 UI thread），不要在那裡直接碰 widget。"""
+        total = self.route.total_distance
+
+        def on_fix(fix):
+            self.status.emit(
+                f"路線播放中 {fix.distance:.0f}/{total:.0f} m"
+                f"（{fix.speed:.1f} m/s，方位 {fix.heading:.0f}°）")
+
+        self.player = RoutePlayer(provider, self.route, on_fix=on_fix).start()
+        while self.player.state in ("running", "paused"):
+            if self._stop.is_set():
+                self.player.stop()
+                return
+            time.sleep(0.1)
+        self.status.emit(f"路線播放結束（{self.player.sent} 筆位置）")
 
     def run(self):
         environment = detect.detect()
@@ -66,6 +92,9 @@ class SimulationWorker(QObject):
             with TestPageServer() as server:
                 checks.append(verify.verify_test_page(provider, server, (self.lat, self.lng)))
 
+            if self.route and checks[0].passed:
+                self._play_route(provider)
+
             if self.with_maps and checks[0].passed:
                 self.status.emit("正在開 Google Maps 並按下定位鈕…")
                 checks.extend(verify.verify_google_maps(
@@ -74,7 +103,14 @@ class SimulationWorker(QObject):
             self.report_ready.emit(report.render(
                 environment, provider, support, checks, LIMITATIONS,
                 next_step="按「停止模擬」收掉這個 Chrome"))
-            self.status.emit("模擬進行中 —— 那個 Chrome 視窗裡的定位就是你設的座標")
+            # 這一行是整輪的最後狀態，會蓋掉 _play_route 的收尾訊息 ——
+            # 所以跑過路線時要講路線的結局，不然畫面上看不出播完了沒。
+            if self.route:
+                self.status.emit(
+                    f"路線播放結束（送出 {self.player.sent} 筆位置）"
+                    f"—— Chrome 停在終點，按「停止模擬」收掉")
+            else:
+                self.status.emit("模擬進行中 —— 那個 Chrome 視窗裡的定位就是你設的座標")
 
             # 撐在這裡讓瀏覽器保持開著，直到使用者按停止。
             while not self._stop.wait(0.2):
@@ -93,6 +129,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("GPS Simulator")
         self.thread = None
         self.worker = None
+        self.waypoints = None
+        self.route_path = None
         self._build()
         self._check_environment()
 
@@ -112,6 +150,31 @@ class MainWindow(QMainWindow):
 
         self.with_maps = QCheckBox("同時開 Google Maps 驗證（會多花約 20 秒）")
         self.with_maps.setChecked(True)
+
+        # ---- 路線 ----
+        self.route_file = QPushButton("載入路線檔…")
+        self.route_file.clicked.connect(self._load_route)
+        self.route_clear = QPushButton("清除")
+        self.route_clear.clicked.connect(self._clear_route)
+        self.route_clear.setEnabled(False)
+        self.route_label = QLabel("未載入路線 —— 只模擬上面那個固定座標")
+        self.route_label.setWordWrap(True)
+
+        self.speed = QDoubleSpinBox()
+        self.speed.setRange(0.1, 1000.0)
+        self.speed.setValue(50.0)
+        self.speed.setSuffix(" km/h")
+        self.interval = QDoubleSpinBox()
+        self.interval.setRange(0.1, 60.0)
+        self.interval.setValue(1.0)
+        self.interval.setSuffix(" 秒/筆")
+        self.loop = QCheckBox("繞圈")
+        self.speed.valueChanged.connect(self._refresh_route_label_if_loaded)
+        self.interval.valueChanged.connect(self._refresh_route_label_if_loaded)
+
+        self.pause_button = QPushButton("暫停")
+        self.pause_button.clicked.connect(self._toggle_pause)
+        self.pause_button.setEnabled(False)
 
         self.start_button = QPushButton("開始模擬")
         self.start_button.clicked.connect(self.start)
@@ -138,9 +201,30 @@ class MainWindow(QMainWindow):
         buttons.addWidget(self.stop_button)
         buttons.addStretch()
 
+        route_top = QHBoxLayout()
+        route_top.addWidget(self.route_file)
+        route_top.addWidget(self.route_clear)
+        route_top.addStretch()
+        route_options = QHBoxLayout()
+        route_options.addWidget(QLabel("速度"))
+        route_options.addWidget(self.speed)
+        route_options.addWidget(QLabel("更新"))
+        route_options.addWidget(self.interval)
+        route_options.addWidget(self.loop)
+        route_options.addStretch()
+        route_box = QVBoxLayout()
+        route_box.addLayout(route_top)
+        route_box.addWidget(self.route_label)
+        route_box.addLayout(route_options)
+        route_group = QGroupBox("路線（選用）")
+        route_group.setLayout(route_box)
+
+        buttons.insertWidget(2, self.pause_button)
+
         layout = QVBoxLayout()
         layout.addLayout(grid)
         layout.addWidget(self.with_maps)
+        layout.addWidget(route_group)
         layout.addLayout(buttons)
         layout.addWidget(self.status)
         layout.addWidget(self.output, stretch=1)
@@ -148,7 +232,7 @@ class MainWindow(QMainWindow):
         central = QWidget()
         central.setLayout(layout)
         self.setCentralWidget(central)
-        self.resize(620, 520)
+        self.resize(660, 700)
 
     def _maybe_split(self):
         text = self.lat.text()
@@ -160,6 +244,62 @@ class MainWindow(QMainWindow):
             return
         self.lat.setText(f"{lat:.6f}".rstrip("0").rstrip("."))
         self.lng.setText(f"{lng:.6f}".rstrip("0").rstrip("."))
+
+    # ---- 路線 ----------------------------------------------------------
+
+    def _load_route(self):
+        patterns = " ".join(f"*{ext}" for ext in formats.SUPPORTED.split())
+        path, _ = QFileDialog.getOpenFileName(self, "選路線檔", "", f"路線檔 ({patterns})")
+        if path:
+            self.load_route_file(path)
+
+    def load_route_file(self, path):
+        """讀檔並更新標籤。抽出來是為了讓冒煙測試不必去點檔案對話框。"""
+        try:
+            self.waypoints = formats.load_waypoints(path)
+        except RouteFileError as e:
+            self._set_status(str(e), error=True)
+            return False
+        self.route_path = path
+        self.route_clear.setEnabled(True)
+        self._refresh_route_label()
+        return True
+
+    def _refresh_route_label_if_loaded(self):
+        if self.waypoints:
+            self._refresh_route_label()
+
+    def _clear_route(self):
+        self.waypoints = None
+        self.route_path = None
+        self.route_clear.setEnabled(False)
+        self.route_label.setText("未載入路線 —— 只模擬上面那個固定座標")
+
+    def _refresh_route_label(self):
+        """把載入的點配上目前的速度／間隔算一次，讓使用者按之前就看得到長度與時間。"""
+        try:
+            route = self._make_route()
+        except RouteError as e:
+            self.route_label.setText(str(e))
+            return
+        self.route_label.setText(
+            f"{os.path.basename(self.route_path)}：{len(route.waypoints)} 點，"
+            f"{route.total_distance:.0f} m，跑完約 {route.duration:.0f} 秒")
+
+    def _make_route(self):
+        return Route(self.waypoints, speed_mps=self.speed.value() / 3.6,
+                     interval_s=self.interval.value(), loop=self.loop.isChecked())
+
+    def _toggle_pause(self):
+        worker = self.worker
+        if not worker or not worker.player:
+            return
+        if worker.player.state == "running":
+            worker.player.pause()
+            self.pause_button.setText("繼續")
+        else:
+            worker.player.resume()
+            self.pause_button.setText("暫停")
 
     # ---- 環境 ----------------------------------------------------------
 
@@ -199,7 +339,20 @@ class MainWindow(QMainWindow):
         self.output.clear()
         self._set_status("啟動中…")
 
-        self.worker = SimulationWorker(lat, lng, self.with_maps.isChecked())
+        route = None
+        if self.waypoints:
+            try:
+                route = self._make_route()
+            except RouteError as e:
+                self._set_status(str(e), error=True)
+                self._on_stopped()
+                return
+            # 路線一定從起點出發，不然開場會從輸入框那個座標跳過去
+            lat, lng, _ = route.at(0)
+            self.pause_button.setEnabled(True)
+            self.pause_button.setText("暫停")
+
+        self.worker = SimulationWorker(lat, lng, self.with_maps.isChecked(), route)
         self.thread = QThread(self)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
@@ -222,6 +375,7 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
+        self.pause_button.setEnabled(False)
         self.lat.setEnabled(True)
         self.lng.setEnabled(True)
         if not self.status.text().startswith("正在"):

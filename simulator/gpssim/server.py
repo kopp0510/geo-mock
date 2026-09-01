@@ -33,6 +33,10 @@ class TestPageServer:
     def url(self):
         return f"{self.origin}/location-test.html"
 
+    @property
+    def route_url(self):
+        return f"{self.origin}/route-test.html"
+
     def start(self):
         self._thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self._thread.start()

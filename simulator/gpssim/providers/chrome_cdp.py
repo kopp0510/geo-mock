@@ -109,6 +109,35 @@ class ChromeCdpProvider(LocationProvider):
         self.cdp.send("Page.navigate", {"url": url}, session_id=session)
         return session
 
+    def set_position(self, lat, lng, accuracy=None, heading=None, speed=None):
+        """把目前位置換掉，套用到每一個已知的分頁（路線播放每一拍都會叫）。
+
+        `heading` / `speed` 是 CDP 真的收的欄位（Chrome 152 的
+        `/json/protocol` 確認過），所以頁面的 `coords.heading` / `coords.speed`
+        拿得到值，不是 null。
+
+        **注意**：Chrome 每套一次 override，就會先對頁面的 `watchPosition`
+        發一個 `POSITION_UNAVAILABLE` 再發新位置（同一毫秒）。這是它的行為，
+        擋不掉；驗證那端要能容忍，見 `verify.py`。
+        """
+        if accuracy is None:
+            accuracy = self.coords[2] if self.coords else 10
+        self.coords = (lat, lng, accuracy)
+
+        params = {"latitude": lat, "longitude": lng, "accuracy": accuracy}
+        if heading is not None:
+            params["heading"] = heading
+        if speed is not None:
+            params["speed"] = speed
+
+        self._flush()
+        for target, session in list(self._targets.items()):
+            try:
+                self.cdp.send("Emulation.setGeolocationOverride", params, session_id=session)
+            except CDPError:
+                # 分頁關掉了就別再對它送，也別讓整條路線為了一個死分頁停下來
+                self._targets.pop(target, None)
+
     def grant(self, origin):
         """授權某個來源使用 geolocation，不跳權限對話框。"""
         if origin in self._granted:

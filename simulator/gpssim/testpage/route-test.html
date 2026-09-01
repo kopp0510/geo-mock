@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Route Test</title>
+<style>
+  body { font: 16px/1.6 -apple-system, "Noto Sans TC", sans-serif; margin: 2rem auto; max-width: 34rem; }
+  h1 { font-size: 1.1rem; color: #666; }
+  #count { font-size: 2rem; font-variant-numeric: tabular-nums; }
+  pre { background: #f4f4f4; padding: .8rem; border-radius: 6px; overflow-x: auto; max-height: 16rem; }
+  p.note { color: #999; font-size: .85rem; }
+</style>
+</head>
+<body>
+<h1>watchPosition 收到的軌跡</h1>
+<div id="count">0</div>
+<pre id="last">尚未收到</pre>
+<p class="note">
+  這一頁只呼叫 <code>navigator.geolocation.watchPosition</code>。
+  錯誤也會記進軌跡 —— Chrome 每次換 override 都會先發一個 POSITION_UNAVAILABLE，
+  那是它的行為，不是模擬失敗。
+</p>
+
+<script>
+// window.__track 是給 Simulator 用 CDP 讀的收口。
+// 成功與失敗都記，而且都帶時間戳 —— 驗證那端要算「兩筆之間的速度」。
+window.__track = [];
+
+function push(entry) {
+  window.__track.push(entry);
+  document.getElementById('count').textContent =
+    window.__track.filter(function (e) { return e.ok; }).length;
+  document.getElementById('last').textContent = JSON.stringify(entry, null, 2);
+}
+
+navigator.geolocation.watchPosition(
+  function (p) {
+    push({
+      ok: true,
+      lat: p.coords.latitude, lng: p.coords.longitude,
+      accuracy: p.coords.accuracy,
+      heading: p.coords.heading, speed: p.coords.speed,
+      timestamp: p.timestamp,
+    });
+  },
+  function (e) {
+    push({ ok: false, code: e.code, message: e.message, timestamp: Date.now() });
+  },
+  { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
+);
+</script>
+</body>
+</html>
