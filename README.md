@@ -59,6 +59,21 @@ Google Maps (Your Location): PASS  (0.00 m)
 
 它還會把 Google Maps 的截圖存到 `.screenshots/`，可以直接看藍點在不在正確位置。
 
+### 用地名找座標
+
+不必記經緯度，直接查：
+
+```bash
+uv run python -m gpssim.cli search "台北101"
+# 1. 25.033835, 121.564499  台北101, 7, 信義路五段, 信義區, 臺北市, 臺灣
+```
+
+圖形介面最上面也有搜尋框，打地名按 Enter，點一下結果就填進座標欄。
+
+> 地址資料來自 [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors（Nominatim）。
+> 它的使用政策是硬約束：每秒至多一次、必須快取、**不做打字即查** ——
+> 所以要按 Enter 或搜尋鈕才會查。
+
 ### 圖形介面
 
 不想打指令的話有 GUI：

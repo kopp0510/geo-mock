@@ -13,7 +13,7 @@ import os
 import sys
 import time
 
-from . import detect, formats, providers, report, verify
+from . import detect, formats, geocode, providers, report, verify
 from .chrome import ChromeLaunchError
 from .coords import InvalidCoordinate, haversine, parse_pair, validate
 from .formats import RouteFileError
@@ -51,6 +51,22 @@ def cmd_gui(_args):
         print("沒有 PySide6。跑 `uv sync --extra gui` 裝好再試。", file=sys.stderr)
         return 2
     return gui_main()
+
+
+def cmd_search(args):
+    """查地址，印出候選座標。**只查一次，不做打字即查**（Nominatim 政策）。"""
+    try:
+        places = geocode.search(args.query)
+    except geocode.GeocodeError as e:
+        print(f"查詢失敗：{e}", file=sys.stderr)
+        return 2
+    if not places:
+        print("查不到這個地點")
+        return 1
+    for index, place in enumerate(places, 1):
+        print(f"{index}. {place.lat:.6f}, {place.lng:.6f}  {place.label}")
+    print(f"\n{geocode.ATTRIBUTION}")
+    return 0
 
 
 def cmd_detect(_args):
@@ -252,6 +268,10 @@ def build_parser():
 
     sub.add_parser("detect", help="印出環境與各 provider 的支援情形").set_defaults(func=cmd_detect)
     sub.add_parser("gui", help="開圖形介面（需要 uv sync --extra gui）").set_defaults(func=cmd_gui)
+
+    p_search = sub.add_parser("search", help="用地址或地標查座標")
+    p_search.add_argument("query", help='例如「台北101」')
+    p_search.set_defaults(func=cmd_search)
 
     p_test = sub.add_parser("test", help="Milestone 1：驗 navigator.geolocation")
     _add_coords(p_test)

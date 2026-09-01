@@ -15,11 +15,11 @@ import time
 from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDoubleSpinBox, QFileDialog, QGridLayout, QGroupBox,
-    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPlainTextEdit, QPushButton,
-    QVBoxLayout, QWidget,
+    QHBoxLayout, QLabel, QLineEdit, QListWidget, QMainWindow, QPlainTextEdit,
+    QPushButton, QVBoxLayout, QWidget,
 )
 
-from . import detect, formats, providers, report, verify
+from . import detect, formats, geocode, providers, report, verify
 from .coords import InvalidCoordinate, parse_pair, validate
 from .formats import RouteFileError
 from .player import RoutePlayer
@@ -31,6 +31,15 @@ from .cli import LIMITATIONS, SHOTS_DIR
 
 DEFAULT_LAT = "25.033964"
 DEFAULT_LNG = "121.564468"
+
+
+class SearchSignals(QObject):
+    """地址查詢跑在普通執行緒上，結果靠 signal 送回 UI thread。
+
+    查一次要好幾秒（Nominatim 在國外），放在 UI thread 會整個凍住。
+    """
+    done = Signal(list)
+    failed = Signal(str)
 
 
 class SimulationWorker(QObject):
@@ -137,6 +146,29 @@ class MainWindow(QMainWindow):
     # ---- 版面 ----------------------------------------------------------
 
     def _build(self):
+        # ---- 地址搜尋 ----
+        self.search_box = QLineEdit()
+        self.search_box.setPlaceholderText("輸入地址或地標，例如：台北101、東京車站、Eiffel Tower")
+        # **只綁 returnPressed 與按鈕，不綁 textChanged。**
+        # Nominatim 政策明文禁止 auto-complete，打字即查會被封鎖，
+        # 跟 debounce 拉多長無關（見 geocode.py 開頭）。
+        self.search_box.returnPressed.connect(self._do_search)
+        self.search_button = QPushButton("搜尋")
+        self.search_button.clicked.connect(self._do_search)
+
+        self.results = QListWidget()
+        self.results.setMaximumHeight(110)
+        self.results.itemClicked.connect(self._pick_result)
+        self.results.hide()
+
+        self.attribution = QLabel(geocode.ATTRIBUTION)
+        self.attribution.setStyleSheet("color: #888; font-size: 11px;")
+
+        self.search_signals = SearchSignals()
+        self.search_signals.done.connect(self._show_results)
+        self.search_signals.failed.connect(lambda m: self._search_failed(m))
+        self.places = []
+
         self.lat = QLineEdit(DEFAULT_LAT)
         self.lng = QLineEdit(DEFAULT_LNG)
         # 貼上「25.033964, 121.564468」整串時自動拆進兩欄 ——
@@ -190,6 +222,10 @@ class MainWindow(QMainWindow):
         self.output.setPlaceholderText("驗證結果會顯示在這裡")
         self.output.setStyleSheet("font-family: Menlo, Consolas, monospace;")
 
+        search_row = QHBoxLayout()
+        search_row.addWidget(self.search_box)
+        search_row.addWidget(self.search_button)
+
         grid = QGridLayout()
         grid.addWidget(QLabel("緯度 Latitude"), 0, 0)
         grid.addWidget(self.lat, 0, 1)
@@ -222,6 +258,9 @@ class MainWindow(QMainWindow):
         buttons.insertWidget(2, self.pause_button)
 
         layout = QVBoxLayout()
+        layout.addLayout(search_row)
+        layout.addWidget(self.results)
+        layout.addWidget(self.attribution)
         layout.addLayout(grid)
         layout.addWidget(self.with_maps)
         layout.addWidget(route_group)
@@ -232,7 +271,7 @@ class MainWindow(QMainWindow):
         central = QWidget()
         central.setLayout(layout)
         self.setCentralWidget(central)
-        self.resize(660, 700)
+        self.resize(680, 780)
 
     def _maybe_split(self):
         text = self.lat.text()
@@ -244,6 +283,51 @@ class MainWindow(QMainWindow):
             return
         self.lat.setText(f"{lat:.6f}".rstrip("0").rstrip("."))
         self.lng.setText(f"{lng:.6f}".rstrip("0").rstrip("."))
+
+    # ---- 地址搜尋 ------------------------------------------------------
+
+    def _do_search(self):
+        query = self.search_box.text().strip()
+        if not query:
+            return
+        self.search_button.setEnabled(False)
+        self._set_status(f"查詢「{query}」…")
+        threading.Thread(target=self._search_worker, args=(query,), daemon=True).start()
+
+    def _search_worker(self, query):
+        try:
+            self.search_signals.done.emit(geocode.search(query))
+        except geocode.GeocodeError as e:
+            self.search_signals.failed.emit(str(e))
+
+    def _show_results(self, places):
+        self.search_button.setEnabled(True)
+        self.places = places
+        self.results.clear()
+        if not places:
+            self.results.hide()
+            self._set_status("查不到這個地點，換個關鍵字試試", error=True)
+            return
+        for place in places:
+            self.results.addItem(place.short(70))
+        self.results.show()
+        self._set_status(f"找到 {len(places)} 個，點一下就填進下面的座標")
+        # 只有一個結果就直接填，省一次點擊
+        if len(places) == 1:
+            self._apply_place(places[0])
+
+    def _search_failed(self, message):
+        self.search_button.setEnabled(True)
+        self.results.hide()
+        self._set_status(message, error=True)
+
+    def _pick_result(self, item):
+        self._apply_place(self.places[self.results.row(item)])
+
+    def _apply_place(self, place):
+        self.lat.setText(f"{place.lat:.6f}")
+        self.lng.setText(f"{place.lng:.6f}")
+        self._set_status(f"已填入：{place.short(50)}")
 
     # ---- 路線 ----------------------------------------------------------
 

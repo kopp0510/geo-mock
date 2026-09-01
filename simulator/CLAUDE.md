@@ -16,6 +16,7 @@ Python 3.10+，唯一相依 `websocket-client`（CDP 是 JSON-RPC over WebSocket
 cd simulator
 uv sync
 
+uv run python -m gpssim.cli search "台北101"                    # 用地標查座標
 uv run python -m gpssim.cli detect                              # 環境與 provider 支援情形
 uv run python -m gpssim.cli test  --coords "25.033964, 121.564468"   # Milestone 1
 uv run python -m gpssim.cli maps  --coords "25.033964, 121.564468"   # Milestone 2
@@ -49,6 +50,7 @@ exit code：
 
 ```
 gpssim/
+├─ geocode.py    # 地址搜尋（Nominatim）。政策全兌現在這一支，別在別處另開請求
 ├─ coords.py      # 座標驗證（±90 / ±180）與 haversine。純函式
 ├─ detect.py      # OS / 版本 / 架構 / Chrome 偵測。只回報看到什麼，不下支不支援的結論
 ├─ cdp.py         # 極簡 CDP client
@@ -151,6 +153,21 @@ gpssim/
 - **Google Maps 的定位鈕靠 `aria-label` 的關鍵字找，可能選到別的按鈕**。
   選錯的結果是 URL 不會移到目標附近 → 回報 `UNVERIFIED` + 截圖，
   不會誤報成 PASS。這是刻意讓它「寧可測不到，不要測錯」。
+
+## Nominatim 使用政策（硬約束，違反會被封鎖）
+
+`geocode.py` 是**唯一**送出地址查詢的地方，政策逐條兌現在那支檔案的開頭註解。
+最容易被誤加回來的兩條：
+
+- **不可以打字即查**（auto-complete）。政策原文把它列為 strictly forbidden，
+  跟 debounce 拉多長無關。搜尋只由 Enter 或搜尋鈕觸發 ——
+  GUI 那邊只綁 `returnPressed` 與按鈕，**別綁 `textChanged`**
+- **不要寫自動化測試去打真的查詢**。重複送同一個 query 會被歸類為 faulty client。
+  冒煙測試用的是已經在快取裡的字串，不會出網路
+
+每秒至多 1 次、7 天快取、50 筆上限、可識別的 User-Agent、介面上標出處，
+都在 `geocode.py` 的常數與 `ATTRIBUTION`。
+Python 這邊可以直接設 User-Agent header，不必像擴充那樣繞 declarativeNetRequest。
 
 ## 不要做的事
 
