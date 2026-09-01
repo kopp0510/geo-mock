@@ -7,6 +7,7 @@ name: Windows smoke
 on:
   push:
     branches: [main]
+    tags: ['v*']          # 打 tag 就發一版到 Releases
   workflow_dispatch:
 
 jobs:
@@ -110,3 +111,29 @@ jobs:
           name: GPS-Simulator-windows
           path: dist/GPS-Simulator.exe
           if-no-files-found: error
+
+      # Artifact 要登入 GitHub 才下載得到，非工程師拿不到 ——
+      # 打 tag 時再發一份到 Releases，那裡是公開直連。
+      - name: 發布到 Releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/GPS-Simulator.exe
+          generate_release_notes: true
+          body: |
+            ## Windows 使用者：下載下面的 `GPS-Simulator.exe`，雙擊就能用
+
+            **需要先裝 Google Chrome**（這個工具是驅動 Chrome，不自帶瀏覽器）。
+
+            第一次執行 Windows 會跳「已保護您的電腦」——
+            這是因為程式沒有付費簽章，不是有問題。
+            點「**其他資訊**」→「**仍要執行**」即可。
+
+            用法：最上面打地名（例如「台北101」）按 Enter →
+            點一下結果 → 按「開始模擬」→ 它會開一個 Chrome，
+            在那個視窗裡上網，定位就是你設的位置。按「停止模擬」收工。
+
+            ---
+
+            本版在 Windows CI 上實測通過：`navigator.geolocation`、
+            Google Maps 的 geolocation 與藍點三項都是 PASS (0.00 m)。
