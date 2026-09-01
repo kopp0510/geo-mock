@@ -22,14 +22,21 @@
 - **絕對不要用 OS 名稱推論支援與否**。沒實測過就回不支援，理由寫「未實測」
 - 新增 provider 就是新增一個檔案 + 加進 `ORDER`，不必動別處
 
-## chrome_cdp.py 的三條硬規則（違反的症狀都很難歸因）
+## chrome_cdp.py 的四條硬規則（違反的症狀都很難歸因）
 
 1. **事件處理器只准排隊，不准送指令**。`_on_attached` 是在 `cdp._wait_for()`
    的 recv 迴圈裡被呼叫的，在那當下送指令會重入、把外層在等的回覆吃掉，
    症狀是遠處某個 send 莫名逾時。排進 `_pending`，由 `_flush()` 在迴圈外補送。
    （`cdp._dispatch()` 現在會對這種情況丟 `CDPError`，不讓它再靜默一次）
 
-2. **每個新 session 都要補送 override**。`Emulation.setGeolocationOverride`
+2. **去重要用 `targetId`，不是 `sessionId`**。同一個分頁會被 attach 好幾次
+   （`open()` 自己一次、auto-attach 再給幾個），每個 sessionId 都不同卻指向同一頁。
+   以 session 去重的話同一頁會被重覆套 override，而**每套一次 Chrome 就會先對
+   `watchPosition` 發一個 `POSITION_UNAVAILABLE` 再發新位置** —— 靜置不動的頁面
+   軌跡裡也會冒出假錯誤。實測：改成 targetId 之後，靜置四秒從「2 位置 1 錯誤」
+   變成「1 位置 0 錯誤」。
+
+3. **每個新 target 都要補送 override**。`Emulation.setGeolocationOverride`
    是 per-session；`Target.setAutoAttach` 只讓你看得到新 target，
    **不會**把既有的 override 帶過去。漏了的話新分頁拿到真實位置。
 
@@ -39,7 +46,7 @@
    —— 早期兩者共用一個 `except Exception`，結果「該補送卻沒補成」被吞掉，
    那個分頁安靜地回報真實位置，症狀跟「根本沒補送」一模一樣。
 
-3. **`stop()` 要能重複呼叫、失敗要吞掉**。分頁可能已經關了，
+4. **`stop()` 要能重複呼叫、失敗要吞掉**。分頁可能已經關了，
    `clearGeolocationOverride` 清不掉不是錯誤。獨立 profile 整個刪掉之後其實
    不會有殘留，但這裡是唯一的還原點 —— 哪天改成附接既有瀏覽器就靠它。
 

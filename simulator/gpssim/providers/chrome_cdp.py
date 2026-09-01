@@ -23,7 +23,12 @@ class ChromeCdpProvider(LocationProvider):
         self.chrome = None
         self.cdp = None
         self.coords = None
-        self._sessions = []
+        # targetId -> sessionId。**用 target 而不是 session 當 key**：
+        # 同一個分頁會被 attach 好幾次（我們自己 attachToTarget 一次，auto-attach
+        # 還會再給幾個），每個 sessionId 都不同但指向同一個分頁。以 session 去重的話
+        # 同一頁會被重覆套 override，而每次重套 Chrome 都會先對 watchPosition
+        # 發一次 POSITION_UNAVAILABLE 再發新位置 —— 軌跡裡就多出一堆假錯誤。
+        self._targets = {}
         self._pending = []
         self._granted = set()
 
@@ -66,7 +71,7 @@ class ChromeCdpProvider(LocationProvider):
         provider 若哪天改成附接既有瀏覽器，這裡就是唯一的還原點。
         """
         if self.cdp:
-            for session in self._sessions:
+            for session in self._targets.values():
                 try:
                     self.cdp.send("Emulation.clearGeolocationOverride", session_id=session)
                 except Exception:
@@ -80,7 +85,8 @@ class ChromeCdpProvider(LocationProvider):
         if self.chrome:
             self.chrome.stop()
             self.chrome = None
-        self._sessions.clear()
+        self._targets.clear()
+        self._pending.clear()
         self._granted.clear()
         self.coords = None
 
@@ -99,7 +105,7 @@ class ChromeCdpProvider(LocationProvider):
         session = self.cdp.send(
             "Target.attachToTarget", {"targetId": target, "flatten": True}
         )["sessionId"]
-        self._prepare(session)
+        self._prepare(session, target)
         self.cdp.send("Page.navigate", {"url": url}, session_id=session)
         return session
 
@@ -149,16 +155,17 @@ class ChromeCdpProvider(LocationProvider):
         症狀是毫無頭緒的 WebSocketTimeoutException。踩過一次。
         """
         session = params.get("sessionId")
-        if session and session not in self._sessions:
-            self._pending.append(session)
+        target = (params.get("targetInfo") or {}).get("targetId")
+        if session and target and target not in self._targets:
+            self._pending.append((session, target))
 
     def _flush(self):
-        """把排隊中的新 session 補上覆寫。只在 recv 迴圈之外呼叫。"""
+        """把排隊中的新分頁補上覆寫。只在 recv 迴圈之外呼叫。"""
         while self._pending:
-            self._prepare(self._pending.pop(0))
+            self._prepare(*self._pending.pop(0))
 
-    def _prepare(self, session):
-        if session in self._sessions or not self.coords:
+    def _prepare(self, session, target):
+        if target in self._targets or not self.coords:
             return
         lat, lng, accuracy = self.coords
 
@@ -182,4 +189,4 @@ class ChromeCdpProvider(LocationProvider):
             print(f"[gpssim] 警告：session {session} 沒能套上定位覆寫，"
                   f"該分頁會回報真實位置（{e}）", file=sys.stderr)
             return
-        self._sessions.append(session)
+        self._targets[target] = session
