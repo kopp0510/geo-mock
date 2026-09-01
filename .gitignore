@@ -10,3 +10,8 @@
 # Python
 .venv/
 __pycache__/
+
+# PyInstaller
+build/
+dist/
+*.spec

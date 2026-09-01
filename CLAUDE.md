@@ -159,6 +159,29 @@ Google Maps (geolocation):   PASS  (0.00 m)
 Google Maps (Your Location): PASS  (0.00 m)
 ```
 
+## 打包（單一執行檔）
+
+`.github/workflows/windows.yml` 在 CI 上用 PyInstaller 打包，打 tag（`v*`）就發到 Releases。
+
+```bash
+# 本機要試的話
+uv run --extra gui --with pyinstaller pyinstaller --onefile --windowed --noconfirm \
+  --name "GPS-Simulator" --add-data "gpssim/testpage:gpssim/testpage" launch.py
+```
+
+三件事別動壞：
+
+- **`--add-data` 一定要帶上 `gpssim/testpage`**。測試頁是執行時讀的檔案，
+  漏了 Milestone 1 會失敗。**分隔符號 Windows 用 `;`、macOS/Linux 用 `:`**
+- **`launch.py` 帶參數走 CLI、不帶開 GUI**。這是為了讓打包出來的東西自我驗證
+  （`GPS-Simulator maps --coords ...`），不然打包壞掉只有人雙擊才會發現。
+  CI 兩個平台都跑這一步
+- **macOS 要分 arm64 與 Intel 兩份**，PySide6 的 wheel 是分架構的。
+  `.app` 是資料夾，要 `ditto -c -k --keepParent` 壓起來才保得住執行權限
+
+實測大小：Windows 47 MB、macOS arm64 37 MB。兩邊都沒有簽章，
+第一次開會被 SmartScreen / Gatekeeper 擋，做法寫在 `.github/release-notes.md`。
+
 ## 已知限制（刻意不修）
 
 - **Chrome 每換一次 override，都會先對 `watchPosition` 發一個

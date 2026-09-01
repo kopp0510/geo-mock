@@ -1,8 +1,8 @@
-# 在真的 Windows 上驗這套能不能跑。
+# 在真的 Windows / macOS 上驗這套能不能跑，然後打包成單一執行檔。
 #
-# 開發機是 macOS，Windows 的部分（Chrome 路徑、行程收拾、DevToolsActivePort 時序）
-# 從來沒有實測過 —— 這個 workflow 就是那次實測。綠了才敢說支援 Windows。
-name: Windows smoke
+# 兩件事一起做的理由：打包出來的東西要能自己跑驗證（`launch.py` 帶參數就走 CLI），
+# 不然「打包壞掉」只能靠人雙擊才發現。
+name: Build & verify
 
 on:
   push:
@@ -11,13 +11,13 @@ on:
   workflow_dispatch:
 
 jobs:
+  # 從原始碼驗一次。這是「程式對不對」的關卡，跟打包無關。
   smoke:
     runs-on: windows-latest
     timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -25,29 +25,12 @@ jobs:
       - name: 裝相依
         run: uv sync
 
-      - name: Chrome 裝在哪
-        shell: pwsh
-        run: |
-          $paths = @(
-            "$env:PROGRAMFILES\Google\Chrome\Application\chrome.exe",
-            "${env:PROGRAMFILES(X86)}\Google\Chrome\Application\chrome.exe",
-            "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
-          )
-          foreach ($p in $paths) {
-            if (Test-Path $p) { Write-Host "找到: $p"; (Get-Item $p).VersionInfo.ProductVersion }
-            else { Write-Host "沒有: $p" }
-          }
-
-      # 不開瀏覽器，只驗環境偵測與 provider 判斷
       - name: detect
         run: uv run python -m gpssim.cli detect
 
-      # 真的開 Chrome、開測試頁、讀 navigator.geolocation
       - name: Milestone 1（navigator.geolocation）
         run: uv run python -m gpssim.cli test --coords "25.033964, 121.564468"
 
-      # 再加上 Google Maps。exit 3 是 UNVERIFIED（測不到），這裡當成失敗處理，
-      # 因為我們要知道 Windows 上到底走不走得完整條路徑
       - name: Milestone 2（Google Maps）
         run: uv run python -m gpssim.cli maps --coords "25.033964, 121.564468"
 
@@ -56,25 +39,20 @@ jobs:
         shell: pwsh
         run: |
           $left = Get-Process chrome -ErrorAction SilentlyContinue
-          if ($left) {
-            Write-Host "::warning::還有 $($left.Count) 個 chrome 程序沒收掉"
-            $left | Select-Object Id, StartTime | Format-Table
-          } else { Write-Host "沒有殘留的 chrome 程序" }
+          if ($left) { Write-Host "::warning::還有 $($left.Count) 個 chrome 程序沒收掉" }
+          else { Write-Host "沒有殘留的 chrome 程序" }
           $profiles = Get-ChildItem $env:TEMP -Filter "gpssim-*" -Directory -ErrorAction SilentlyContinue
-          if ($profiles) {
-            Write-Host "::warning::還有 $($profiles.Count) 個 temp profile 沒刪"
-            $profiles | Select-Object FullName | Format-Table
-          } else { Write-Host "沒有殘留的 temp profile" }
+          if ($profiles) { Write-Host "::warning::還有 $($profiles.Count) 個 temp profile 沒刪" }
+          else { Write-Host "沒有殘留的 temp profile" }
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: screenshots
+          name: screenshots-windows
           path: .screenshots/
           if-no-files-found: warn
 
-  # smoke 綠了才打包 —— 沒驗過的東西不該被下載
-  build:
+  build-windows:
     needs: smoke
     runs-on: windows-latest
     timeout-minutes: 25
@@ -85,12 +63,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
-      - name: 打包成單一 exe
+      - name: 打包
         shell: pwsh
         run: |
           # --windowed：雙擊時不要跳出黑色終端機視窗
@@ -102,13 +79,17 @@ jobs:
             --add-data "gpssim/testpage;gpssim/testpage" `
             launch.py
 
-      - name: 檢查產物
+      # 用打包出來的執行檔跑真正的驗證 —— 這才測得到資源檔有沒有被打包進去
+      - name: 打包版自我驗證
         shell: pwsh
         run: |
           $exe = "dist\GPS-Simulator.exe"
           if (-not (Test-Path $exe)) { throw "沒有產出 $exe" }
-          $size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
-          Write-Host "產出 $exe（$size MB）"
+          Write-Host "產出 $exe（$([math]::Round((Get-Item $exe).Length / 1MB, 1)) MB）"
+          & $exe detect
+          if ($LASTEXITCODE -ne 0) { throw "打包版 detect 失敗" }
+          & $exe maps --coords "25.033964, 121.564468"
+          if ($LASTEXITCODE -ne 0) { throw "打包版 maps 失敗" }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -116,28 +97,67 @@ jobs:
           path: dist/GPS-Simulator.exe
           if-no-files-found: error
 
-      # Artifact 要登入 GitHub 才下載得到，非工程師拿不到 ——
-      # 打 tag 時再發一份到 Releases，那裡是公開直連。
       - name: 發布到 Releases
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: dist/GPS-Simulator.exe
           generate_release_notes: true
-          body: |
-            ## Windows 使用者：下載下面的 `GPS-Simulator.exe`，雙擊就能用
+          body_path: .github/release-notes.md
 
-            **需要先裝 Google Chrome**（這個工具是驅動 Chrome，不自帶瀏覽器）。
+  build-macos:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple Silicon 與 Intel 要各打一份 —— PySide6 的 wheel 是分架構的，
+          # 在 arm64 上打出來的東西 Intel Mac 跑不動。
+          - runner: macos-latest
+            arch: arm64
+          - runner: macos-13
+            arch: intel
 
-            第一次執行 Windows 會跳「已保護您的電腦」——
-            這是因為程式沒有付費簽章，不是有問題。
-            點「**其他資訊**」→「**仍要執行**」即可。
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
-            用法：最上面打地名（例如「台北101」）按 Enter →
-            點一下結果 → 按「開始模擬」→ 它會開一個 Chrome，
-            在那個視窗裡上網，定位就是你設的位置。按「停止模擬」收工。
+      - name: 打包
+        run: |
+          uv run --extra gui --with pyinstaller pyinstaller \
+            --onefile --windowed --noconfirm \
+            --name "GPS-Simulator" \
+            --add-data "gpssim/testpage:gpssim/testpage" \
+            launch.py
 
-            ---
+      - name: 打包版自我驗證
+        run: |
+          ls -lh dist/
+          ./dist/GPS-Simulator detect
+          ./dist/GPS-Simulator maps --coords "25.033964, 121.564468"
 
-            本版在 Windows CI 上實測通過：`navigator.geolocation`、
-            Google Maps 的 geolocation 與藍點三項都是 PASS (0.00 m)。
+      # .app 是資料夾，要壓起來才傳得動，也才保得住執行權限
+      - name: 壓成 zip
+        run: |
+          ditto -c -k --keepParent dist/GPS-Simulator.app \
+            "GPS-Simulator-macos-${{ matrix.arch }}.zip"
+          ls -lh *.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GPS-Simulator-macos-${{ matrix.arch }}
+          path: GPS-Simulator-macos-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+      - name: 發布到 Releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: GPS-Simulator-macos-${{ matrix.arch }}.zip
+          generate_release_notes: true
+          body_path: .github/release-notes.md
