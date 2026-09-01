@@ -19,12 +19,19 @@
 需要 [uv](https://docs.astral.sh/uv/) 與 Google Chrome。
 
 ```bash
+git clone https://github.com/kopp0510/gps-simulator.git
 cd gps-simulator
-uv sync --extra gui
+uv sync --extra gui                      # 不需要圖形介面的話，uv sync 就好
 uv run python -m gpssim.cli gui
 ```
 
-圖形介面：最上面打地名按 Enter → 點結果填入座標 → 按「開始模擬」。
+圖形介面的流程：
+
+1. 最上面打地名（例如「台北101」）按 **Enter**，點一下結果就填進座標欄 ——
+   也可以直接把「25.033964, 121.564468」整串貼進緯度欄，會自動拆成兩欄
+2. 按「**開始模擬**」→ 它會開一個 Chrome、跑完驗證、把結果印在下面
+3. 那個瀏覽器會**保持開著**讓你自己操作，裡面的定位就是你設的座標
+4. 按「**停止模擬**」或關掉視窗，就會收掉瀏覽器並還原
 
 只想用命令列的話：
 
@@ -65,19 +72,6 @@ uv run python -m gpssim.cli search "台北101"
 > 地址資料來自 [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors（Nominatim）。
 > 它的使用政策是硬約束：每秒至多一次、必須快取、**不做打字即查** ——
 > 所以要按 Enter 或搜尋鈕才會查。
-
-### 圖形介面
-
-不想打指令的話有 GUI：
-
-```bash
-uv sync --extra gui
-uv run python -m gpssim.cli gui
-```
-
-填緯度經度（也可以直接把「25.033964, 121.564468」整串貼進緯度欄，會自動拆成兩欄），
-按「開始模擬」。它會開一個 Chrome、跑完驗證、把結果印在下面，然後**保持那個瀏覽器開著**
-讓你自己操作。按「停止模擬」或關掉視窗就會收掉瀏覽器並還原。
 
 ### 模擬移動（路線）
 
