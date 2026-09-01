@@ -48,7 +48,7 @@ exit code：
 ## 檔案
 
 ```
-geo-mock/                  ← repo 根目錄就是專案本體
+gps-simulator/             ← repo 根目錄就是專案本體
 ├─ pyproject.toml  uv.lock
 ├─ README.md  SPEC.md  CLAUDE.md
 └─ gpssim/

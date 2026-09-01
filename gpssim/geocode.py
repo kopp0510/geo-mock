@@ -34,7 +34,7 @@ import urllib.request
 from dataclasses import dataclass
 
 ENDPOINT = "https://nominatim.openstreetmap.org/search"
-USER_AGENT = "gpssim/0.1 (geo-mock GPS Simulator; local development tool)"
+USER_AGENT = "gpssim/0.1 (GPS Simulator; local development tool)"
 ATTRIBUTION = "地址資料來源：OpenStreetMap contributors（Nominatim）"
 
 MIN_INTERVAL_S = 1.0                    # 兩次實際送出之間的硬下限

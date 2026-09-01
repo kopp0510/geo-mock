@@ -8,7 +8,7 @@
 | 檔案 | 職責 | 相依 |
 |---|---|---|
 | `coords.py` | 座標驗證（±90 / ±180）、「緯度, 經度」拆解、haversine 距離 | 純函式，什麼都不依賴 |
-| `geocode.py` | 地址搜尋（Nominatim）+ 速率閘門 + 磁碟快取 | 只有標準庫 |
+| `geocode.py` | 地址搜尋（Nominatim）+ 速率閘門 + 磁碟快取。`USER_AGENT` 是政策要求的識別，**不可改成標準函式庫的預設值** | 只有標準庫 |
 | `detect.py` | OS / 版本 / 架構 / Chrome 執行檔與版本 | 只有標準庫 |
 | `cdp.py` | CDP client：send / 事件派送 / pump。**內含 RLock 可跨執行緒共用，每個指令有 30 秒期限** | `websocket-client` |
 | `chrome.py` | 起獨立 profile 的 Chrome、等 DevToolsActivePort、收工刪 profile | `detect` |

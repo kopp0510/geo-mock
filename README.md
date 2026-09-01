@@ -19,7 +19,7 @@
 需要 [uv](https://docs.astral.sh/uv/) 與 Google Chrome。
 
 ```bash
-cd geo-mock
+cd gps-simulator
 uv sync --extra gui
 uv run python -m gpssim.cli gui
 ```
