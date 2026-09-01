@@ -1,0 +1,73 @@
+# 在真的 Windows 上驗這套能不能跑。
+#
+# 開發機是 macOS，Windows 的部分（Chrome 路徑、行程收拾、DevToolsActivePort 時序）
+# 從來沒有實測過 —— 這個 workflow 就是那次實測。綠了才敢說支援 Windows。
+name: Windows smoke
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: 裝相依
+        run: uv sync
+
+      - name: Chrome 裝在哪
+        shell: pwsh
+        run: |
+          $paths = @(
+            "$env:PROGRAMFILES\Google\Chrome\Application\chrome.exe",
+            "${env:PROGRAMFILES(X86)}\Google\Chrome\Application\chrome.exe",
+            "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
+          )
+          foreach ($p in $paths) {
+            if (Test-Path $p) { Write-Host "找到: $p"; (Get-Item $p).VersionInfo.ProductVersion }
+            else { Write-Host "沒有: $p" }
+          }
+
+      # 不開瀏覽器，只驗環境偵測與 provider 判斷
+      - name: detect
+        run: uv run python -m gpssim.cli detect
+
+      # 真的開 Chrome、開測試頁、讀 navigator.geolocation
+      - name: Milestone 1（navigator.geolocation）
+        run: uv run python -m gpssim.cli test --coords "25.033964, 121.564468"
+
+      # 再加上 Google Maps。exit 3 是 UNVERIFIED（測不到），這裡當成失敗處理，
+      # 因為我們要知道 Windows 上到底走不走得完整條路徑
+      - name: Milestone 2（Google Maps）
+        run: uv run python -m gpssim.cli maps --coords "25.033964, 121.564468"
+
+      - name: 收拾乾淨了嗎
+        if: always()
+        shell: pwsh
+        run: |
+          $left = Get-Process chrome -ErrorAction SilentlyContinue
+          if ($left) {
+            Write-Host "::warning::還有 $($left.Count) 個 chrome 程序沒收掉"
+            $left | Select-Object Id, StartTime | Format-Table
+          } else { Write-Host "沒有殘留的 chrome 程序" }
+          $profiles = Get-ChildItem $env:TEMP -Filter "gpssim-*" -Directory -ErrorAction SilentlyContinue
+          if ($profiles) {
+            Write-Host "::warning::還有 $($profiles.Count) 個 temp profile 沒刪"
+            $profiles | Select-Object FullName | Format-Table
+          } else { Write-Host "沒有殘留的 temp profile" }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: .screenshots/
+          if-no-files-found: warn
