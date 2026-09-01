@@ -9,6 +9,7 @@ CDP 是 JSON-RPC 2.0 風味的協定跑在一條 WebSocket 上：送 `{id, metho
 """
 
 import json
+import threading
 import time
 import urllib.request
 
@@ -28,6 +29,10 @@ class CDP:
         self.ws = websocket.create_connection(ws_url, timeout=timeout, suppress_origin=True)
         self._id = 0
         self._handlers = {}
+        # 一條 WebSocket 同時被兩個執行緒用會壞掉：send 是「寫出去、讀到自己的
+        # id 為止」，兩邊交錯的話 A 會讀走 B 在等的回覆再丟掉，B 就永遠等不到。
+        # 路線播放正是這個情境 —— player 執行緒每秒送位置，驗證這端同時讀軌跡。
+        self._lock = threading.RLock()
         self.browser = ""   # 由 connect() 從 /json/version 填入
 
     @classmethod
@@ -44,12 +49,13 @@ class CDP:
         self._handlers.setdefault(method, []).append(handler)
 
     def send(self, method, params=None, session_id=None):
-        self._id += 1
-        message = {"id": self._id, "method": method, "params": params or {}}
-        if session_id:
-            message["sessionId"] = session_id
-        self.ws.send(json.dumps(message))
-        return self._wait_for(self._id, method)
+        with self._lock:
+            self._id += 1
+            message = {"id": self._id, "method": method, "params": params or {}}
+            if session_id:
+                message["sessionId"] = session_id
+            self.ws.send(json.dumps(message))
+            return self._wait_for(message["id"], method)
 
     def pump(self, seconds):
         """在沒有指令要送的時候把累積的事件讀出來派送。
@@ -59,6 +65,7 @@ class CDP:
         """
         deadline = time.time() + seconds
         original = self.ws.gettimeout()
+        self._lock.acquire()
         try:
             while True:
                 remaining = deadline - time.time()
@@ -71,6 +78,7 @@ class CDP:
                     return
         finally:
             self.ws.settimeout(original)
+            self._lock.release()
 
     def close(self):
         try:

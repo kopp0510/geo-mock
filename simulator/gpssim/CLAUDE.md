@@ -9,7 +9,7 @@
 |---|---|---|
 | `coords.py` | 座標驗證（±90 / ±180）、「緯度, 經度」拆解、haversine 距離 | 純函式，什麼都不依賴 |
 | `detect.py` | OS / 版本 / 架構 / Chrome 執行檔與版本 | 只有標準庫 |
-| `cdp.py` | CDP client：send / 事件派送 / pump | `websocket-client` |
+| `cdp.py` | CDP client：send / 事件派送 / pump。**內含 RLock，可跨執行緒共用** | `websocket-client` |
 | `chrome.py` | 起獨立 profile 的 Chrome、等 DevToolsActivePort、收工刪 profile | `detect` |
 | `server.py` | 餵 `testpage/` 的本機 http server | 只有標準庫 |
 | `route.py` | 路線模型、大圓內插、點到路線的距離 | `coords` |
@@ -27,6 +27,9 @@
   `providers` 用它們；`verify` / `report` 只認 provider 的公開方法與 `Check`；
   `cli` 在最上面。**不要讓下層 import 上層**
 - **判定一律比距離不比字串**（`coords.haversine`）。浮點尾數差一位不該算失敗
+- **同一個 `CDP` 物件可以跨執行緒用，但別把鎖拿掉**。`send()` 是「寫出去、
+  一路讀到自己的 id 為止」，沒有鎖的話兩個執行緒會互相吃掉對方在等的回覆。
+  路線播放就是這個情境：player 執行緒每秒送位置，`verify_route` 同時在讀軌跡
 - **路線的「算在哪裡」與「什麼時候送」要分開**：`route.py` 是純運算（可直接斷言，
   不必開瀏覽器），`player.py` 才碰時鐘與執行緒。合在一起的話路線邏輯就只能
   靠開瀏覽器驗

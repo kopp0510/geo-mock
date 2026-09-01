@@ -200,6 +200,34 @@ Simulator 把「怎麼改掉定位」抽成 provider，介面在
 profile 的 Chrome（Chrome 136 起禁止對預設 user-data-dir 開偵錯連線），
 那個瀏覽器沒有登入 Google。兩者互補，所以擴充留著，只是排在後面。
 
+### 路線模擬（計畫 §14、§15）
+
+固定座標驗收全綠之後才做的第二階段。
+
+| 元件 | 職責 |
+|---|---|
+| `route.py` | 路線模型與內插。**純運算**，不碰瀏覽器也不碰時鐘，可直接斷言 |
+| `formats.py` | GPX / KML / GeoJSON / 純文字讀檔。四種格式對同一條路線產生相同結果 |
+| `player.py` | 按真實時間播放，暫停／繼續／停止 |
+
+硬性要求：
+
+- **內插走大圓**（`coords.destination`），不是「每秒把緯度加固定值」。
+  實測：緯度 25 走正東 1000 m 要 0.009923 度經度，緯度 70 要 0.026294 度 ——
+  固定加值會讓實際速度隨緯度飄掉
+- **每一拍對出發時間重算該送的時刻**，不是睡固定秒數。後者會把每次送出的耗時
+  累積成漂移，跑久了速度就偏慢
+- `heading` / `speed` 一起送。CDP 的 `Emulation.setGeolocationOverride`
+  收 `latitude` `longitude` `accuracy` `altitude` `altitudeAccuracy` `heading` `speed`
+  七個欄位（Chrome 152 的 `/json/protocol` 確認過）
+
+驗收（`Route playback follows the path`）四件事一起看：收到的點貼著路線、
+實測速度接近設定值、`heading`/`speed` 有值、暫停期間不再送位置。
+
+**Google Maps 在路線模式下量不出東西**：藍點不會跟著移動，同分頁重按定位鈕也不動，
+另開新分頁才更新且拿到的是快取位置。所以 `route --maps` 只印觀察與截圖，不列入判定 ——
+做成 UNVERIFIED 的話會永遠 exit 3，久了沒人看 exit code。
+
 ### 驗收條件
 
 按下 Start 之後程式印 SUCCESS **不算數**，必須實際讀 `navigator.geolocation`：
