@@ -14,7 +14,24 @@
 
 ---
 
-## 快速上手
+## Windows 使用者：下載就能用
+
+不需要裝 Python，也不用開終端機。
+
+1. 到 [**Releases**](https://github.com/kopp0510/gps-simulator/releases/latest) 下載 `GPS-Simulator.exe`
+2. 先確認電腦裝了 **Google Chrome**（這個工具是驅動 Chrome，不自帶瀏覽器）
+3. 雙擊 `GPS-Simulator.exe`
+
+第一次執行 Windows 會跳「已保護您的電腦」—— 那是因為程式沒有付費簽章，
+點「**其他資訊**」→「**仍要執行**」即可。
+
+> Windows 版每次發布前都會在 GitHub Actions 的真實 Windows 上跑過一次驗證，
+> 三項驗收（`navigator.geolocation`、Google Maps 的 geolocation 與藍點）
+> 全 PASS 才會打包。
+
+---
+
+## 從原始碼跑（macOS / Linux / 想改程式的人）
 
 需要 [uv](https://docs.astral.sh/uv/) 與 Google Chrome。
 
