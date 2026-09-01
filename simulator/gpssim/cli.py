@@ -38,6 +38,16 @@ def _target(args):
     return validate(args.lat, args.lng)
 
 
+def cmd_gui(_args):
+    # 延後 import：沒裝 PySide6 的人跑其他子指令不該被擋下來。
+    try:
+        from .gui import main as gui_main
+    except ImportError:
+        print("沒有 PySide6。跑 `uv sync --extra gui` 裝好再試。", file=sys.stderr)
+        return 2
+    return gui_main()
+
+
 def cmd_detect(_args):
     environment = detect.detect()
     print(report.render_survey(environment, providers.survey()))
@@ -124,6 +134,7 @@ def build_parser():
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("detect", help="印出環境與各 provider 的支援情形").set_defaults(func=cmd_detect)
+    sub.add_parser("gui", help="開圖形介面（需要 uv sync --extra gui）").set_defaults(func=cmd_gui)
 
     p_test = sub.add_parser("test", help="Milestone 1：驗 navigator.geolocation")
     _add_coords(p_test)
