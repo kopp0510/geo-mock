@@ -173,7 +173,7 @@ uv run --extra gui --with pyinstaller pyinstaller --onefile --windowed --noconfi
   --name "GPS-Simulator" --add-data "gpssim/testpage:gpssim/testpage" launch.py
 ```
 
-三件事別動壞：
+三件事別動壞（第三條是 CI 專屬的）：
 
 - **`--add-data` 一定要帶上 `gpssim/testpage`**。測試頁是執行時讀的檔案，
   漏了 Milestone 1 會失敗。**分隔符號 Windows 用 `;`、macOS/Linux 用 `:`**
@@ -182,6 +182,11 @@ uv run --extra gui --with pyinstaller pyinstaller --onefile --windowed --noconfi
   CI 兩個平台都跑這一步
 - **macOS 要分 arm64 與 Intel 兩份**，PySide6 的 wheel 是分架構的。
   `.app` 是資料夾，要 `ditto -c -k --keepParent` 壓起來才保得住執行權限
+
+- **在 Windows 上拿打包版的 exit code 要用 `Start-Process -Wait -PassThru`**。
+  PowerShell 的 `&` 對 GUI 子系統的 exe **不會等它結束**就返回，
+  `$LASTEXITCODE` 是空字串 —— 症狀是 CI 印出「失敗（exit ）」，
+  看起來像程式壞了，其實程式根本還沒跑完
 
 實測大小：Windows 47 MB、macOS arm64 37 MB。兩邊都沒有簽章，
 第一次開會被 SmartScreen / Gatekeeper 擋，做法寫在 `.github/release-notes.md`。

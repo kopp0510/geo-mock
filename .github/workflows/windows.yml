@@ -86,12 +86,18 @@ jobs:
           $exe = "dist\GPS-Simulator.exe"
           if (-not (Test-Path $exe)) { throw "沒有產出 $exe" }
           Write-Host "產出 $exe（$([math]::Round((Get-Item $exe).Length / 1MB, 1)) MB）"
-          # --windowed 的 exe 是 GUI 子系統，沒有主控台，所以這裡**看不到輸出**，
-          # 只能看 exit code。0 = 全過，那就夠證明資源檔打包正確了。
-          & $exe detect
-          if ($LASTEXITCODE -ne 0) { throw "打包版 detect 失敗（exit $LASTEXITCODE）" }
-          & $exe maps --coords "25.033964, 121.564468"
-          if ($LASTEXITCODE -ne 0) { throw "打包版 maps 失敗（exit $LASTEXITCODE）" }
+          # --windowed 的 exe 是 GUI 子系統：沒有主控台（看不到輸出），
+          # 而且 **PowerShell 的 `&` 不會等它結束就返回**，$LASTEXITCODE 是空的。
+          # 踩過一次，錯誤訊息長這樣：「打包版 detect 失敗（exit ）」。
+          # 要拿 exit code 只能用 Start-Process -Wait -PassThru。
+          function Invoke-Packaged([string[]]$Arguments) {
+            $p = Start-Process -FilePath $exe -ArgumentList $Arguments -Wait -PassThru
+            return $p.ExitCode
+          }
+          $code = Invoke-Packaged @("detect")
+          if ($code -ne 0) { throw "打包版 detect 失敗（exit $code）" }
+          $code = Invoke-Packaged @("maps", "--coords", "25.033964, 121.564468")
+          if ($code -ne 0) { throw "打包版 maps 失敗（exit $code）" }
           Write-Host "打包版 detect 與 maps 都回 0"
 
       - uses: actions/upload-artifact@v4
