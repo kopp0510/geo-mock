@@ -14,27 +14,26 @@
 
 ---
 
-## 下載就能用（不必裝 Python、不用開終端機）
+## Windows：下載就能用（不必裝 Python、不用開終端機）
 
-到 [**Releases**](https://github.com/kopp0510/gps-simulator/releases/latest) 下載對應的檔案：
+到 [**Releases**](https://github.com/kopp0510/gps-simulator/releases/latest) 下載
+[`GPS-Simulator.exe`](https://github.com/kopp0510/gps-simulator/releases/latest/download/GPS-Simulator.exe)。
 
-| 你的電腦 | 下載 |
-|---|---|
-| Windows | `GPS-Simulator.exe` |
-| Mac（M1／M2／M3 以後） | `GPS-Simulator-macos-arm64.zip` |
-| Mac（2020 以前的 Intel 機種） | `GPS-Simulator-macos-intel.zip` |
+**要先裝 [Google Chrome](https://www.google.com/chrome/)** —— 這個工具是驅動 Chrome，不自帶瀏覽器。
 
-**都要先裝 [Google Chrome](https://www.google.com/chrome/)** —— 這個工具是驅動 Chrome，不自帶瀏覽器。
+### 第一次打開會被 Windows 擋
 
-### 第一次打開會被系統擋
+程式沒有付費簽章（一年要數千到上萬台幣），所以會跳「已保護您的電腦」
+→ 點「**其他資訊**」→「**仍要執行**」。
 
-程式沒有付費簽章（一年要數千到上萬台幣），所以：
+## Mac：沒有下載檔，請從原始碼跑
 
-- **Windows**：跳「已保護您的電腦」→ 點「**其他資訊**」→「**仍要執行**」
-- **Mac**：解壓縮後**在 App 上按右鍵 →「打開」**，再點一次「打開」。
-  直接雙擊會被 Gatekeeper 擋掉，這是正常的
+未簽章的 App 下載後會被 Gatekeeper 擋掉（「無法打開，因為 Apple 無法檢查是否包含惡意軟體」），
+而解除那道鎖要付 Apple Developer Program 的年費做公證 ——
+發一個多數人打不開的檔案沒有意義，所以 Mac 版不打包成執行檔。
+下面〈**從原始碼跑**〉那一節的四行指令貼進終端機就能跑起來。
 
-### 怎麼用
+## 開起來之後怎麼用（兩個平台一樣）
 
 1. 最上面打地名，例如「台北101」，按 **Enter**
 2. 點一下查出來的結果，座標會自動填好
@@ -42,15 +41,16 @@
 4. **在那個 Chrome 視窗裡**上網，網站問你的位置時就會拿到你設的座標
 5. 用完按「**停止模擬**」
 
-> 每一版發布前，三個平台都會在 GitHub Actions 上**用打包好的執行檔本身**
-> 跑過驗證，三項（`navigator.geolocation`、Google Maps 拿到的座標、
+> 每一版發布前都會在 GitHub Actions 上跑過驗證：**Windows 用打包好的執行檔本身**驗、
+> **macOS 從原始碼**驗，三項（`navigator.geolocation`、Google Maps 拿到的座標、
 > Google Maps 的藍點）全 PASS 才會發布。沒過就不會有下載檔。
 
 ---
 
-## 從原始碼跑（想改程式，或想用命令列）
+## 從原始碼跑（**Mac 走這條**，或想改程式、想用命令列）
 
 需要 [uv](https://docs.astral.sh/uv/) 與 Google Chrome。
+沒裝 uv 的話先跑 `curl -LsSf https://astral.sh/uv/install.sh | sh`，裝完把終端機關掉重開。
 
 ```bash
 git clone https://github.com/kopp0510/gps-simulator.git

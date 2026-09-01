@@ -178,12 +178,17 @@ CI 在打包前跑 `set_version.py`，把版本灌進 `pyproject.toml` 與 `__ve
 
 | 觸發 | 跑什麼 |
 |---|---|
-| 推 `main` | 只有 `smoke` —— 在 Windows 上從原始碼驗一次 |
-| 推 `v*` tag | `smoke` + 三個平台打包 + 發布到 Releases |
+| 推 `main` | 只有 `smoke` —— 在 **Windows 與 macOS** 上各從原始碼驗一次 |
+| 推 `v*` tag | `smoke` + **只有 Windows** 打包 + 發布到 Releases |
+
+`smoke` 是 matrix（`windows-latest` + `macos-latest`），**macOS 唯一的驗證關卡就是它** ——
+沒有 macOS 打包 job 了（見下方「打包」節），拿掉 matrix 那條腿 macOS 就完全沒人把關。
+matrix 的 artifact 名稱一定要帶 `${{ runner.os }}`：`upload-artifact@v4` 對重名是**直接報 409**，
+不是覆蓋，兩條腿共用一個名字會讓整輪紅在最後一步。
 
 **打包的 job 有 `if: startsWith(github.ref, 'refs/tags/v')`，別拿掉** ——
-少了它，一次發版會跑兩輪一模一樣的打包（推 main 一次、推 tag 一次），
-三個平台都白跑。代價是打包壞掉要到打 tag 才發現，但那時自我驗證會擋下發布，
+少了它，一次發版會跑兩輪一模一樣的打包（推 main 一次、推 tag 一次）。
+代價是打包壞掉要到打 tag 才發現，但那時自我驗證會擋下發布，
 修完重打一個 tag 就好，不會有壞檔案流出去。
 **不要手動改那兩個地方** —— 多一個要記得改的地方就多一個會忘的地方，
 這支腳本存在的理由就是修掉那個不一致（tag 已經 v0.2.0，那兩處還停在 0.1.0）。
@@ -194,6 +199,15 @@ CI 在打包前跑 `set_version.py`，把版本灌進 `pyproject.toml` 與 `__ve
 ## 打包（單一執行檔）
 
 `.github/workflows/windows.yml` 在 CI 上用 PyInstaller 打包，打 tag（`v*`）就發到 Releases。
+
+> **macOS 打包已於 2026-09-01 移出 CI**（只剩 Windows）。理由不是打包壞掉，是**沒人打得開**：
+> 未簽章的 `.app` 下載後帶 `com.apple.quarantine`，雙擊只會得到「無法打開，因為 Apple
+> 無法檢查是否包含惡意軟體」，而那個對話框只有「移到垃圾桶」與「取消」兩顆按鈕。
+> 要解除只能付 Apple Developer Program 年費做 `codesign` + `notarytool` + `stapler` 公證 ——
+> 檔案本身無法規避（quarantine 是下載端的瀏覽器貼的，不在 zip 裡）。
+> Mac 使用者改從原始碼跑，README 與 release-notes 都已改成這樣寫。
+>
+> **以下 macOS 相關的知識刻意保留**，哪天付了年費要把 build 加回來，這節就是地圖。
 
 ```bash
 # 本機要試的話
@@ -207,14 +221,14 @@ uv run --extra gui --with pyinstaller pyinstaller --onefile --windowed --noconfi
   漏了 Milestone 1 會失敗。**分隔符號 Windows 用 `;`、macOS/Linux 用 `:`**
 - **`launch.py` 帶參數走 CLI、不帶開 GUI**。這是為了讓打包出來的東西自我驗證
   （`GPS-Simulator maps --coords ...`），不然打包壞掉只有人雙擊才會發現。
-  CI 兩個平台都跑這一步
-- **macOS 要分 arm64 與 Intel 兩份**，PySide6 的 wheel 是分架構的。
+  現在只有 Windows 打包，所以只有那一個 job 跑這一步
+- **（已停用，供日後恢復）macOS 要分 arm64 與 Intel 兩份**，PySide6 的 wheel 是分架構的。
   `.app` 是資料夾，要 `ditto -c -k --keepParent` 壓起來才保得住執行權限
 
 - **CI 裡驗打包版不要用 `--coords`，用 `--lat` / `--lng`**。
   `"25.033964, 121.564468"` 裡有空格，`Start-Process` 會把它拆成兩個參數，
   程式收到殘缺座標回 exit 2 —— 看起來像打包壞了，其實是參數傳錯
-- **Intel Mac 的 runner 標籤是 `macos-15-intel`，不是 `macos-13`**（後者 2025 年
+- **（已停用，供日後恢復）Intel Mac 的 runner 標籤是 `macos-15-intel`，不是 `macos-13`**（後者 2025 年
   12 月已退役）。寫錯的話 job 會卡在「Waiting for a runner」直到逾時，
   不會有任何錯誤訊息。那也是最後一個 x86_64 映像，2027 年 8 月之後就沒有了
 - **在 Windows 上拿打包版的 exit code 要用 `Start-Process -Wait -PassThru`**。
@@ -222,8 +236,8 @@ uv run --extra gui --with pyinstaller pyinstaller --onefile --windowed --noconfi
   `$LASTEXITCODE` 是空字串 —— 症狀是 CI 印出「失敗（exit ）」，
   看起來像程式壞了，其實程式根本還沒跑完
 
-實測大小：Windows 47 MB、macOS arm64 37 MB。兩邊都沒有簽章，
-第一次開會被 SmartScreen / Gatekeeper 擋，做法寫在 `.github/release-notes.md`。
+實測大小：Windows 47 MB、macOS arm64 37 MB。Windows 版沒有簽章，
+第一次開會被 SmartScreen 擋（「其他資訊」→「仍要執行」），做法寫在 `.github/release-notes.md`。
 
 ## 已知限制（刻意不修）
 
