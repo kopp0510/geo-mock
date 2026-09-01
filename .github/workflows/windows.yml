@@ -94,9 +94,12 @@ jobs:
             $p = Start-Process -FilePath $exe -ArgumentList $Arguments -Wait -PassThru
             return $p.ExitCode
           }
+          # 用 --lat / --lng 而不是 --coords："25.033964, 121.564468" 裡有空格，
+          # Start-Process 會把它拆成兩個參數，程式收到殘缺的座標回 exit 2。
+          # 踩過一次，訊息是「打包版 maps 失敗（exit 2）」——2 是「座標無效」。
           $code = Invoke-Packaged @("detect")
           if ($code -ne 0) { throw "打包版 detect 失敗（exit $code）" }
-          $code = Invoke-Packaged @("maps", "--coords", "25.033964, 121.564468")
+          $code = Invoke-Packaged @("maps", "--lat", "25.033964", "--lng", "121.564468")
           if ($code -ne 0) { throw "打包版 maps 失敗（exit $code）" }
           Write-Host "打包版 detect 與 maps 都回 0"
 
@@ -125,9 +128,14 @@ jobs:
         include:
           # Apple Silicon 與 Intel 要各打一份 —— PySide6 的 wheel 是分架構的，
           # 在 arm64 上打出來的東西 Intel Mac 跑不動。
+          #
+          # Intel 用 macos-15-intel，**不是 macos-13** —— 後者 2025 年 12 月已退役，
+          # 指定它的話 job 會永遠卡在「Waiting for a runner to pick up this job」
+          # 直到逾時。踩過一次，兩輪 CI 都卡在那裡。
+          # macos-15-intel 是最後一個 x86_64 映像，2027 年 8 月之後就沒有了。
           - runner: macos-latest
             arch: arm64
-          - runner: macos-13
+          - runner: macos-15-intel
             arch: intel
 
     steps:

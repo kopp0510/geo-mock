@@ -183,6 +183,12 @@ uv run --extra gui --with pyinstaller pyinstaller --onefile --windowed --noconfi
 - **macOS 要分 arm64 與 Intel 兩份**，PySide6 的 wheel 是分架構的。
   `.app` 是資料夾，要 `ditto -c -k --keepParent` 壓起來才保得住執行權限
 
+- **CI 裡驗打包版不要用 `--coords`，用 `--lat` / `--lng`**。
+  `"25.033964, 121.564468"` 裡有空格，`Start-Process` 會把它拆成兩個參數，
+  程式收到殘缺座標回 exit 2 —— 看起來像打包壞了，其實是參數傳錯
+- **Intel Mac 的 runner 標籤是 `macos-15-intel`，不是 `macos-13`**（後者 2025 年
+  12 月已退役）。寫錯的話 job 會卡在「Waiting for a runner」直到逾時，
+  不會有任何錯誤訊息。那也是最後一個 x86_64 映像，2027 年 8 月之後就沒有了
 - **在 Windows 上拿打包版的 exit code 要用 `Start-Process -Wait -PassThru`**。
   PowerShell 的 `&` 對 GUI 子系統的 exe **不會等它結束**就返回，
   `$LASTEXITCODE` 是空字串 —— 症狀是 CI 印出「失敗（exit ）」，
