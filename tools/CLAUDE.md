@@ -5,6 +5,9 @@ manifest.json 沒有引用它們，Chrome 也不會載入。
 
 ## 檔案
 
+> 本檔的裸檔名分兩種：`verify.js` / `fixtures/*.html` 在這一層；
+> `manifest.json`、`inject.js`、`defaults.js`、`rules.json` 那些指 **`../extension/`**。
+
 | 檔案 | 用途 |
 |---|---|
 | `verify.js` | 開真實瀏覽器載入未封裝擴充，斷言定位覆寫確實生效。8 步開發迴圈步驟 1、5 的驗證入口（**只驗 `extension/`**；`simulator/` 走 `gpssim.cli`） |

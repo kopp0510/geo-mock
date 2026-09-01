@@ -43,6 +43,9 @@ geo-mock/
 
 ## 擴充的架構約束（已定案，不重新討論）
 
+> 本節與下面兩節的裸檔名（`inject.js`、`bridge.js`、`manifest.json`…）
+> 一律指 **`extension/` 底下**那一份。
+
 - 覆寫對象是 `navigator.geolocation`，必須跑在頁面自己的 JS 環境
 - **兩個 content script 都要 `all_frames: true` **與** `match_about_blank: true`**：
   iframe 有自己的 JS 環境，漏了其中一個的症狀是「主頁面正常、嵌在裡面的地圖顯示

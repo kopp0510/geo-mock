@@ -71,7 +71,7 @@ gpssim/
    用 `suppress_origin=True`，**不要**改成加 `--remote-allow-origins=*` ——
    後者等於對所有網頁開放 CDP。
 
-2. **事件處理器裡絕對不能送指令**（`providers/chrome_cdp.py` 的 `_on_attached`）。
+2. **事件處理器裡絕對不能送指令**（`gpssim/providers/chrome_cdp.py` 的 `_on_attached`）。
    它是在 `cdp._wait_for()` 的 recv 迴圈裡被呼叫的，在那當下送指令會重入：
    內層等待會先讀到外層正在等的回覆並丟掉，外層永遠等不到。
    症狀是**遠處某個 send 莫名 WebSocketTimeoutException**，完全看不出跟事件有關。

@@ -39,6 +39,6 @@
 ## 與上層的關係
 
 - `cli.py` 的 `SHOTS_DIR` 指向 **repo 根目錄**的 `.screenshots/`（已 gitignore），
-  不是 `simulator/` 底下。跟 `tools/verify.js` 的截圖放同一處
+  不是 `simulator/` 底下。跟 `../../tools/verify.js` 的截圖放同一處
 - `providers/extension.py` 指的是 `../../extension/` 那個 Chrome 擴充，
   目前只是介面殼，沒有實際串接

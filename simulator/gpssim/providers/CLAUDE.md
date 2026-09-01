@@ -1,6 +1,6 @@
 # providers/ — 「怎麼改掉定位」的抽象與實作
 
-一個 provider = 一種讓瀏覽器回報指定座標的辦法。上層（`verify.py` / `cli.py`）
+一個 provider = 一種讓瀏覽器回報指定座標的辦法。上層（`../verify.py` / `../cli.py`）
 只認 `base.py` 的介面，換 OS 或換瀏覽器時只加檔案，不動上層。
 
 ## 檔案
