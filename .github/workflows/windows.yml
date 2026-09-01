@@ -78,6 +78,10 @@ jobs:
     needs: smoke
     runs-on: windows-latest
     timeout-minutes: 25
+    # 預設的 GITHUB_TOKEN 是唯讀的，少了這行建 release 會 403
+    # 「Resource not accessible by integration」。踩過一次。
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
