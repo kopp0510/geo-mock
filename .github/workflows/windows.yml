@@ -67,6 +67,12 @@ jobs:
         with:
           enable-cache: true
 
+      # 版本號的唯一來源是 git tag。不是 tag 的話就維持原始碼裡的 0.0.0+dev，
+      # 這樣拿到執行檔的人一眼看得出「這不是 Releases 上的正式版」。
+      - name: 從 tag 寫入版本號
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: uv run python set_version.py ${{ github.ref_name }}
+
       - name: 打包
         shell: pwsh
         run: |
@@ -143,6 +149,12 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+
+      # 版本號的唯一來源是 git tag。不是 tag 的話就維持原始碼裡的 0.0.0+dev，
+      # 這樣拿到執行檔的人一眼看得出「這不是 Releases 上的正式版」。
+      - name: 從 tag 寫入版本號
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: uv run python set_version.py ${{ github.ref_name }}
 
       - name: 打包
         run: |

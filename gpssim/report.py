@@ -4,6 +4,8 @@
 一定要帶實際的驗證結果。
 """
 
+from . import __version__
+
 _UNKNOWN = "—"
 
 
@@ -19,6 +21,7 @@ def render(environment, provider, support, checks=(), limitations=(), next_step=
     """組出 §22 那個區塊。`checks` 是 verify.Check 的串列。"""
     by_name = {c.name: c for c in checks}
     lines = [
+        f"Simulator:                   v{__version__}",
         f"Platform:                    {environment.os_name} {environment.os_version} ({environment.arch})",
         f"Browser:                     {environment.browser}",
         f"Location Simulation Method:  {provider.name if provider else _UNKNOWN}",
@@ -62,6 +65,7 @@ def render(environment, provider, support, checks=(), limitations=(), next_step=
 def render_survey(environment, survey):
     """把每個 provider 的支援情形列出來——計畫 §17 要的 capability detection。"""
     lines = [
+        f"Simulator:     v{__version__}",
         f"Platform:      {environment.os_name} {environment.os_version} ({environment.arch})",
         f"Architecture:  {environment.arch}",
         f"Browser:       {environment.browser}",

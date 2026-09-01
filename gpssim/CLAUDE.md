@@ -55,6 +55,9 @@
   Windows 的預設編碼吃不下中文（`UnicodeEncodeError`），以及 PyInstaller
   `--windowed` 的 exe 根本沒有 stdout（`sys.stdout is None`，`print` 丟
   `AttributeError`）。兩個都是第一個 `print` 就死，實測都踩過
+- **`__version__` 不要手改**（`__init__.py`）。正式版由 CI 從 git tag 灌進來
+  （`../set_version.py`），原始碼裡固定是 `0.0.0+dev` —— 那個值本身就是
+  「這不是 Releases 上的檔案」的訊號
 - 註解寫繁體中文，跟隨 repo 既有慣例
 - 沒有單元測試框架。驗證靠 `cli.py` 的 `test` / `maps` 實際開瀏覽器跑
 - **GUI 的阻塞動作全在 worker thread**，而且 provider 從建立到 `stop()` 必須

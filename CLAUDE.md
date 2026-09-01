@@ -163,6 +163,22 @@ Google Maps (geolocation):   PASS  (0.00 m)
 Google Maps (Your Location): PASS  (0.00 m)
 ```
 
+## 版本號
+
+**唯一來源是 git tag。** 發版就兩行：
+
+```bash
+git tag v0.3.0
+git push origin v0.3.0
+```
+
+CI 在打包前跑 `set_version.py`，把版本灌進 `pyproject.toml` 與 `__version__`。
+**不要手動改那兩個地方** —— 多一個要記得改的地方就多一個會忘的地方，
+這支腳本存在的理由就是修掉那個不一致（tag 已經 v0.2.0，那兩處還停在 0.1.0）。
+
+從原始碼跑會看到 `v0.0.0+dev`，那是刻意的：拿到執行檔的人一眼就知道
+是不是 Releases 上的正式版。版本會顯示在 GUI 標題列與 `detect` / `maps` 的報告第一行。
+
 ## 打包（單一執行檔）
 
 `.github/workflows/windows.yml` 在 CI 上用 PyInstaller 打包，打 tag（`v*`）就發到 Releases。

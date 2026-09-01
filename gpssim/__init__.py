@@ -3,7 +3,9 @@
 import os
 import sys
 
-__version__ = "0.1.0"
+#: 正式版由 CI 從 git tag 灌進來（見 set_version.py）。
+#: 從原始碼跑就是這個值 —— 看到 dev 就知道不是 Releases 上的檔案。
+__version__ = "0.0.0+dev"
 
 
 def enable_utf8_output():

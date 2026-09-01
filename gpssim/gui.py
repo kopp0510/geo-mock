@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QPushButton, QVBoxLayout, QWidget,
 )
 
-from . import detect, formats, geocode, providers, report, verify
+from . import __version__, detect, formats, geocode, providers, report, verify
 from . import enable_utf8_output
 from .coords import InvalidCoordinate, parse_pair, validate
 from .formats import RouteFileError
@@ -136,7 +136,7 @@ class SimulationWorker(QObject):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("GPS Simulator")
+        self.setWindowTitle(f"GPS Simulator v{__version__}")
         self.thread = None
         self.worker = None
         self.waypoints = None
