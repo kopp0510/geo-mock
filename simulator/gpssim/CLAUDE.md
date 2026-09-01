@@ -25,7 +25,12 @@
 - **判定一律比距離不比字串**（`coords.haversine`）。浮點尾數差一位不該算失敗
 - **狀態有五種，不可壓成 PASS/FAIL 兩種**：`PASS` / `FAIL` /
   `PERMISSION_DENIED`（權限問題，不是模擬失敗）/ `UNVERIFIED`（測不到）/ `SKIPPED`。
-  把 `UNVERIFIED` report 成 `FAIL` 會讓「Maps 改版」看起來像「模擬壞了」
+  把 `UNVERIFIED` report 成 `FAIL` 會讓「Maps 改版」看起來像「模擬壞了」，
+  併進 `PASS` 又會讓「沒驗到」看起來像「驗過了」。
+  `cli._run` 的 exit code 跟著這條分：0 全過 / 1 失敗 / 2 環境或輸入問題 / 3 有 UNVERIFIED
+- **會啟動外部程序的流程，`start()` 一定要在 `try` 裡**，清理放 `finally`。
+  `cli._run` 踩過：`provider.start()` 寫在 try 外面，Chrome 起來但 CDP 接不上時
+  `stop()` 不會被呼叫，Chrome 跟 temp profile 就留在系統上
 - **`detect.py` 只回報看到什麼，不下支不支援的結論**。能不能用是各 provider
   `is_supported()` 的事 —— 這是為了避免寫出 `if Windows: assume supported`
 - 註解寫繁體中文，跟隨 repo 既有慣例

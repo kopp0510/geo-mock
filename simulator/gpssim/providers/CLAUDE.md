@@ -33,6 +33,12 @@
    是 per-session；`Target.setAutoAttach` 只讓你看得到新 target，
    **不會**把既有的 override 帶過去。漏了的話新分頁拿到真實位置。
 
+   `_prepare()` 用 **`Page.enable` 當「這是不是 page target」的判別式**：
+   worker 之類的 target 沒有 Page domain 會直接回錯，跳過它是對的。
+   過了這關之後再失敗**就是真的失敗**，要印警告到 stderr，**不可以靜默 return**
+   —— 早期兩者共用一個 `except Exception`，結果「該補送卻沒補成」被吞掉，
+   那個分頁安靜地回報真實位置，症狀跟「根本沒補送」一模一樣。
+
 3. **`stop()` 要能重複呼叫、失敗要吞掉**。分頁可能已經關了，
    `clearGeolocationOverride` 清不掉不是錯誤。獨立 profile 整個刪掉之後其實
    不會有殘留，但這裡是唯一的還原點 —— 哪天改成附接既有瀏覽器就靠它。

@@ -5,7 +5,10 @@
 `navigator.geolocation` 的做法有本質差別（計畫 §8）。
 """
 
-from ..cdp import CDP
+import base64
+import sys
+
+from ..cdp import CDP, CDPError
 from ..chrome import Chrome, ChromeLaunchError
 from .. import detect
 from .base import LocationProvider, Support
@@ -121,7 +124,6 @@ class ChromeCdpProvider(LocationProvider):
             }, session_id=session)
 
     def screenshot(self, session, path):
-        import base64
         data = self.cdp.send("Page.captureScreenshot", {"format": "png"},
                              session_id=session)["data"]
         with open(path, "wb") as f:
@@ -159,12 +161,25 @@ class ChromeCdpProvider(LocationProvider):
         if session in self._sessions or not self.coords:
             return
         lat, lng, accuracy = self.coords
+
+        # 用 Page.enable 當「這是不是 page target」的判別式：worker 之類的 target
+        # 沒有 Page domain，會直接回錯。那種跳過是對的，它本來就沒有定位可覆寫。
         try:
             self.cdp.send("Page.enable", session_id=session)
+        except CDPError:
+            return
+
+        # 到這裡就確定是 page target 了，**再失敗就是真的失敗**。
+        # 早期這裡跟上面共用一個 except，結果是「該補送卻沒補成」被靜默吞掉，
+        # 那個分頁會安靜地回報真實位置 —— 跟漏掉補送完全同一個症狀。
+        try:
             self.cdp.send("Runtime.enable", session_id=session)
             self.cdp.send("Emulation.setGeolocationOverride", {
                 "latitude": lat, "longitude": lng, "accuracy": accuracy,
             }, session_id=session)
-        except Exception:
-            return   # 不是 page target（worker 之類）就跳過，不影響主流程
+        except CDPError as e:
+            # 分頁可能在這中間被關掉了，不值得中斷整輪；但一定要吵出來。
+            print(f"[gpssim] 警告：session {session} 沒能套上定位覆寫，"
+                  f"該分頁會回報真實位置（{e}）", file=sys.stderr)
+            return
         self._sessions.append(session)

@@ -81,10 +81,11 @@ class Chrome:
             if self.process.poll() is not None:
                 raise ChromeLaunchError(f"Chrome 啟動後隨即結束（exit {self.process.returncode}）")
             try:
-                lines = open(path).read().strip().splitlines()
+                with open(path) as f:
+                    first_line = f.readline().strip()
             except OSError:
-                lines = []
-            if lines and lines[0].isdigit():
-                return int(lines[0])
+                first_line = ""
+            if first_line.isdigit():
+                return int(first_line)
             time.sleep(0.1)
         raise ChromeLaunchError(f"等不到 DevToolsActivePort（{timeout} 秒）")

@@ -178,7 +178,8 @@ geo-mock/
      uv run python -m gpssim.cli maps --coords "25.033964, 121.564468"   # exit 0 才算過
      ```
      `maps` 會實際開 Chrome、開 Google Maps、按定位鈕、存截圖到 `.screenshots/`。
-     **三項全 PASS 才算過**，`UNVERIFIED` 要看截圖確認藍點再判斷
+     **exit 0（三項全 PASS）才算過**。exit 3 是有項目 `UNVERIFIED` ——
+     測不到不等於失敗，要去看 `.screenshots/` 的截圖確認藍點再判斷
    - 改到 `extension/`：`node tools/verify.js` —— exit 0 才算過。它會開真實瀏覽器
      載入未封裝擴充，斷言覆寫生效、請求排隊、以及設定永不到達時不會懸掛
      （細節見 tools/CLAUDE.md）

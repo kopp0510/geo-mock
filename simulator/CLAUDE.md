@@ -22,7 +22,17 @@ uv run python -m gpssim.cli maps  --coords "25.033964, 121.564468"   # Milestone
 uv run python -m gpssim.cli start --coords "25.033964, 121.564468"   # 開著不關
 ```
 
-exit code：0 = 全過，1 = 有 FAIL / PERMISSION_DENIED，2 = 座標無效或環境不支援。
+exit code：
+
+| code | 意思 |
+|---|---|
+| 0 | 全部 PASS |
+| 1 | 有 `FAIL` 或 `PERMISSION_DENIED` |
+| 2 | 座標無效，或這個環境沒有可用的 provider |
+| 3 | 有 `UNVERIFIED` —— **測不到，不是失敗**。要人去看 `.screenshots/` 的截圖才知道 |
+
+3 特別要分出來：Maps 改版讓定位鈕找不到時就是這個，把它併進 0 會讓「沒驗到」
+看起來像「驗過了」，併進 1 又會讓「Maps 換版面」看起來像「模擬壞了」。
 
 ## 檔案
 
@@ -89,6 +99,18 @@ gpssim/
    找不到時回報 **`UNVERIFIED` 不是 `FAIL`** —— 「測不到」跟「模擬失敗」是兩件事。
    另外 Maps 載入時 URL 就已經帶著 `/@lat,lng`（IP 推測的位置），
    所以要等它**變成目標附近**，不能一看到 `/@` 就收工。
+
+## 已知限制（刻意不修）
+
+- **Python 程序被強制中斷時，那個 Chrome 與 temp profile 會留在系統上**。
+  清理靠 `cli._run` 的 `finally` → `provider.stop()`，`kill -9`、agent 被中止、
+  終端機直接關掉都不會跑到它。正常結束（含 Ctrl-C）會清乾淨，實測 profile 數
+  跑前跑後相同。要修得加 watchdog 或 process group，不值得。
+  收拾方式：`pkill -f 'user-data-dir=.*gpssim-'`，temp profile 系統自己會回收。
+
+- **Google Maps 的定位鈕靠 `aria-label` 的關鍵字找，可能選到別的按鈕**。
+  選錯的結果是 URL 不會移到目標附近 → 回報 `UNVERIFIED` + 截圖，
+  不會誤報成 PASS。這是刻意讓它「寧可測不到，不要測錯」。
 
 ## 不要做的事
 

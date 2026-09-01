@@ -22,6 +22,12 @@ MAPS_THRESHOLD_M = 200
 MAPS_URL = "https://www.google.com/maps"
 MAPS_ORIGIN = "https://www.google.com"
 
+#: check 的名稱。report.py 是拿這幾個字串去查表對應到報告的欄位，
+#: 改字面值就會讓那邊靜默變成「—」。
+CHECK_TEST_PAGE = "navigator.geolocation returns simulated location"
+CHECK_MAPS_RECEIVED = "Google Maps receives simulated location"
+CHECK_MAPS_LOCATED = "Google Maps Your Location is near target"
+
 #: Maps 的定位鈕沒有穩定的 id，只能靠無障礙標籤找。改版會斷，
 #: 斷掉時回報 UNVERIFIED 而不是 FAIL —— 「找不到按鈕」不等於「模擬失敗」。
 _LOCATE_BUTTON = r"""(() => {
@@ -103,8 +109,7 @@ def verify_test_page(provider, server, target, timeout=20):
         raw = provider.evaluate(session, "JSON.stringify(window.__result)")
         return json.loads(raw) if raw and raw != "null" else None
 
-    return _classify(_poll(read, timeout), target, TEST_PAGE_THRESHOLD_M,
-                     "navigator.geolocation returns simulated location")
+    return _classify(_poll(read, timeout), target, TEST_PAGE_THRESHOLD_M, CHECK_TEST_PAGE)
 
 
 # ---- Milestone 2 -------------------------------------------------------
@@ -126,18 +131,18 @@ def verify_google_maps(provider, target, shots_dir=None, load_wait=12, locate_wa
     # 先確認 Maps 這個 origin 拿到的 geolocation 是什麼。
     # 這一項失敗的話後面點不點按鈕都沒意義。
     received = provider.evaluate(session, _PROBE, await_promise=True)
-    received_check = _classify(received, target, TEST_PAGE_THRESHOLD_M,
-                               "Google Maps receives simulated location")
+    received_check = _classify(received, target, TEST_PAGE_THRESHOLD_M, CHECK_MAPS_RECEIVED)
+    # 綁的是同一個 list 物件，後面再 append 的截圖這裡也看得到，所以只綁一次就好。
+    received_check.artifacts = artifacts
+
     if not received_check.passed:
-        received_check.artifacts = artifacts
-        return received_check, Check("Google Maps Your Location is near target",
-                                     "SKIPPED", detail="頁面沒拿到模擬座標，不必再按定位鈕")
+        return received_check, Check(CHECK_MAPS_LOCATED, "SKIPPED",
+                                     detail="頁面沒拿到模擬座標，不必再按定位鈕")
 
     candidates = json.loads(provider.evaluate(session, _LOCATE_BUTTON) or "[]")
     if not candidates:
-        received_check.artifacts = artifacts
         return received_check, Check(
-            "Google Maps Your Location is near target", "UNVERIFIED",
+            CHECK_MAPS_LOCATED, "UNVERIFIED",
             detail="找不到定位鈕（Maps 改版或語系不同），需要手動確認",
             artifacts=artifacts)
 
@@ -160,18 +165,16 @@ def verify_google_maps(provider, target, shots_dir=None, load_wait=12, locate_wa
     center = _poll(near_target, locate_wait)
     if shots_dir:
         artifacts.append(provider.screenshot(session, os.path.join(shots_dir, "maps-located.png")))
-    received_check.artifacts = artifacts
 
     if center is None:
-        last = centered()
         return received_check, Check(
-            "Google Maps Your Location is near target", "UNVERIFIED",
-            target=target, actual=last,
+            CHECK_MAPS_LOCATED, "UNVERIFIED",
+            target=target, actual=centered(),
             detail=f"按了「{button['label']}」但地圖中心沒移到目標附近，請看截圖確認藍點",
             artifacts=artifacts)
 
-    distance = haversine(target[0], target[1], *center)
     return received_check, Check(
-        "Google Maps Your Location is near target", "PASS",
-        target=target, actual=center, distance_m=distance,
+        CHECK_MAPS_LOCATED, "PASS",
+        target=target, actual=center,
+        distance_m=haversine(target[0], target[1], *center),
         detail=f"已按「{button['label']}」；藍點位置請以截圖為準", artifacts=artifacts)

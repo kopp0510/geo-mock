@@ -13,6 +13,7 @@ import os
 import sys
 
 from . import detect, providers, report, verify
+from .chrome import ChromeLaunchError
 from .coords import InvalidCoordinate, parse_pair, validate
 from .providers.chrome_cdp import ChromeCdpProvider
 from .server import TestPageServer
@@ -56,8 +57,11 @@ def _run(target, with_maps, keep_open):
         return 2
 
     checks = []
-    provider.start(lat, lng)
+    # start() 一定要在 try 裡面：Chrome 起來了但 CDP 接不上時，
+    # 若寫在外面 stop() 就不會被呼叫，那個 Chrome 與 temp profile 會留在系統上。
+    # stop() 對「只起了一半」的 provider 是安全的。
     try:
+        provider.start(lat, lng)
         with TestPageServer() as server:
             checks.append(verify.verify_test_page(provider, server, (lat, lng)))
 
@@ -68,18 +72,30 @@ def _run(target, with_maps, keep_open):
 
         if keep_open:
             print("\nChrome 保持開啟中。按 Enter 停止模擬並關閉……")
-            input()
+            try:
+                input()
+            except EOFError:
+                pass   # 非互動環境（管線、CI）沒有 stdin，直接收工就好
     finally:
         # 計畫 §13：無論成敗都要還原，不能讓環境一直停在假位置。
         provider.stop()
 
     failed = [c for c in checks if c.status in ("FAIL", "PERMISSION_DENIED")]
-    print(report.render(
-        environment, provider, support, checks, LIMITATIONS,
-        next_step="接 PySide6 GUI（計畫 §19 第三階段）" if not failed
-                  else "先修掉上面失敗的項目",
-    ))
-    return 1 if failed else 0
+    unverified = [c for c in checks if c.status == "UNVERIFIED"]
+
+    # 「測不到」與「失敗」要用不同的 exit code 分開。併進 0 會讓沒驗到的那一輪
+    # 看起來像全過（Maps 改版就是這條路徑）；併進 1 又會讓「Maps 換版面」
+    # 看起來像「模擬壞了」。
+    if failed:
+        code, next_step = 1, "先修掉上面失敗的項目"
+    elif unverified:
+        code, next_step = 3, "看 .screenshots/ 的截圖人工確認藍點，再決定是不是真的有問題"
+    else:
+        code, next_step = 0, "接 PySide6 GUI（計畫 §19 第三階段）"
+
+    print(report.render(environment, provider, support, checks, LIMITATIONS,
+                        next_step=next_step))
+    return code
 
 
 def cmd_test(args):
@@ -130,6 +146,9 @@ def main(argv=None):
         return args.func(args)
     except InvalidCoordinate as e:
         print(f"座標無效：{e}", file=sys.stderr)
+        return 2
+    except ChromeLaunchError as e:
+        print(f"啟動 Chrome 失敗：{e}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         return 130
