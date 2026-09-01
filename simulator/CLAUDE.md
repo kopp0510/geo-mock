@@ -20,6 +20,9 @@ uv run python -m gpssim.cli detect                              # 環境與 prov
 uv run python -m gpssim.cli test  --coords "25.033964, 121.564468"   # Milestone 1
 uv run python -m gpssim.cli maps  --coords "25.033964, 121.564468"   # Milestone 2
 uv run python -m gpssim.cli start --coords "25.033964, 121.564468"   # 開著不關
+
+uv sync --extra gui                          # 裝 PySide6
+uv run python -m gpssim.cli gui              # 圖形介面
 ```
 
 exit code：
@@ -51,7 +54,8 @@ gpssim/
 │  └─ extension.py    # ../extension/ 那個擴充，尚未接上
 ├─ verify.py     # Milestone 1 / 2 的判定
 ├─ report.py     # 回報格式
-└─ cli.py        # 入口。第一版只有 CLI，沒有 GUI
+├─ gui.py        # PySide6 介面。選用相依，`uv sync --extra gui` 才裝得到
+└─ cli.py        # 入口（含 `gui` 子指令）
 ```
 
 ## 已驗證的事實（別重查）
@@ -102,6 +106,10 @@ gpssim/
 
 ## 已知限制（刻意不修）
 
+- **GUI 沒有自動化測試進 repo**。驗證靠一支用完即丟的冒煙腳本：開真視窗、
+  按開始、等三項 PASS、按停止、確認沒有殘留 Chrome，逐步截圖到 `.screenshots/`。
+  這個專案沒有測試框架，不為了 GUI 引進一個。
+
 - **Python 程序被強制中斷時，那個 Chrome 與 temp profile 會留在系統上**。
   清理靠 `cli._run` 的 `finally` → `provider.stop()`，`kill -9`、agent 被中止、
   終端機直接關掉都不會跑到它。正常結束（含 Ctrl-C）會清乾淨，實測 profile 數
@@ -122,4 +130,5 @@ gpssim/
 ## 尚未做（依計畫的優先順序，撞到再做）
 
 Route / 速度 / bearing / GPX / KML / GeoJSON / Pause / Resume；
-Edge / Firefox / Safari；OS 層 provider；PySide6 GUI（前三個 Milestone 綠燈才做）。
+Edge / Firefox / Safari；OS 層 provider。
+（PySide6 GUI 已完成 —— 計畫 §19 第三階段）

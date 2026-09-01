@@ -14,6 +14,7 @@
 | `server.py` | 餵 `testpage/` 的本機 http server | 只有標準庫 |
 | `verify.py` | Milestone 1 / 2 的判定，回傳 `Check` | `coords` |
 | `report.py` | 計畫 §22 的回報格式 | 無 |
+| `gui.py` | PySide6 介面。**選用相依**，沒裝 PySide6 也不影響其他模組 | 全部 + `cli` 的常數 |
 | `cli.py` | 入口，把上面兜起來 | 全部 |
 | `providers/` | 「怎麼改掉定位」的抽象與實作（見該層 CLAUDE.md） | `cdp` / `chrome` |
 
@@ -35,6 +36,12 @@
   `is_supported()` 的事 —— 這是為了避免寫出 `if Windows: assume supported`
 - 註解寫繁體中文，跟隨 repo 既有慣例
 - 沒有單元測試框架。驗證靠 `cli.py` 的 `test` / `maps` 實際開瀏覽器跑
+- **GUI 的阻塞動作全在 worker thread**，而且 provider 從建立到 `stop()` 必須
+  在**同一個 thread**：CDP 的 WebSocket 不是 thread-safe，從 UI thread 呼叫
+  `stop()` 會跟正在等回覆的 `recv` 撞在一起。UI thread 只掀一個
+  `threading.Event`，收拾仍由 worker 自己做
+- **`cli.py` 對 `gui.py` 的 import 一定要延後到函式裡**。寫在檔頭的話，
+  沒裝 PySide6 的人連 `detect` 都跑不了
 
 ## 與上層的關係
 

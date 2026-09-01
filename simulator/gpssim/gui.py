@@ -103,7 +103,12 @@ class MainWindow(QMainWindow):
         self.lng = QLineEdit(DEFAULT_LNG)
         # 貼上「25.033964, 121.564468」整串時自動拆進兩欄 ——
         # Google Maps 右鍵複製出來就是這個格式，跟擴充的 options 頁行為一致。
-        self.lat.textChanged.connect(self._maybe_split)
+        #
+        # 用 editingFinished 而不是 textChanged：後者會在打字打到一半就拆。
+        # 手動輸入「25.033964, 1」的當下 parse 就成功了，欄位會被就地改寫成
+        # lat=25.033964 / lng=1，游標留在緯度欄，接著打的字全接到緯度後面。
+        # 貼上之後直接按開始鈕的情況由 start() 再叫一次補上。
+        self.lat.editingFinished.connect(self._maybe_split)
 
         self.with_maps = QCheckBox("同時開 Google Maps 驗證（會多花約 20 秒）")
         self.with_maps.setChecked(True)
@@ -145,7 +150,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         self.resize(620, 520)
 
-    def _maybe_split(self, text):
+    def _maybe_split(self):
+        text = self.lat.text()
         if "," not in text:
             return
         try:
@@ -163,8 +169,11 @@ class MainWindow(QMainWindow):
         全都不支援時直接照 §4 第三優先的字面訊息顯示，不留一顆按得下去卻必然失敗的按鈕。
         """
         environment = detect.detect()
-        self.output.setPlainText(report.render_survey(environment, providers.survey()))
-        if not ChromeCdpProvider().is_supported():
+        # survey() 已經問過每個 provider 了，重覆問一次等於再跑一次 chrome --version。
+        survey = providers.survey()
+        self.output.setPlainText(report.render_survey(environment, survey))
+        cdp_support = next(s for cls, s in survey if cls is ChromeCdpProvider)
+        if not cdp_support:
             self.start_button.setEnabled(False)
             self._set_status(
                 "Location simulation is not supported on this environment.", error=True)
@@ -176,6 +185,7 @@ class MainWindow(QMainWindow):
     # ---- 動作 ----------------------------------------------------------
 
     def start(self):
+        self._maybe_split()   # 貼完整串直接按開始、沒離開欄位的情況
         try:
             lat, lng = validate(self.lat.text(), self.lng.text())
         except InvalidCoordinate as e:
