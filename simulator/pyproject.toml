@@ -1,0 +1,15 @@
+[project]
+name = "gpssim"
+version = "0.1.0"
+description = "跨平台 GPS / Location Simulator —— 讓瀏覽器的 navigator.geolocation 回傳指定座標"
+requires-python = ">=3.10"
+# 唯一的相依。CDP 是 JSON-RPC over WebSocket，標準庫沒有 WebSocket client。
+dependencies = ["websocket-client>=1.7"]
+
+[project.optional-dependencies]
+gui = ["pyside6>=6.6"]
+
+# 不打包成套件，直接從 simulator/ 底下 `uv run python -m gpssim.cli` 跑。
+# 這樣不需要 build backend，也不需要 editable install。
+[tool.uv]
+package = false

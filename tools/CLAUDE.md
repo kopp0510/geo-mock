@@ -7,7 +7,7 @@ manifest.json 沒有引用它們，Chrome 也不會載入。
 
 | 檔案 | 用途 |
 |---|---|
-| `verify.js` | 開真實瀏覽器載入未封裝擴充，斷言定位覆寫確實生效。6 步開發迴圈步驟 1、5 的驗證入口 |
+| `verify.js` | 開真實瀏覽器載入未封裝擴充，斷言定位覆寫確實生效。8 步開發迴圈步驟 1、5 的驗證入口（**只驗 `extension/`**；`simulator/` 走 `gpssim.cli`） |
 | `fixtures/frame.html` | 被 `test.html` 用 iframe 嵌進去，驗 `all_frames` 有沒有生效 |
 | `fixtures/test.html` | 測試頁。在 `<head>` 最頂端就呼叫 `getCurrentPosition`，刻意打中「設定未到就先要定位」那條路徑；同時也有給人看的介面（見下方「手動測試」）|
 
@@ -156,9 +156,21 @@ python3 -m http.server 8000 -d tools/fixtures
 | `PLAYWRIGHT_DIR` | 自動找 | 含 playwright 的 `node_modules` 目錄 |
 | `PORT` | `0`（OS 配埠） | 測試頁的本機埠 |
 
+## 路徑常數（搬過一次，別再搞混）
+
+`verify.js` 開頭分成兩個常數，**不是同一層**：
+
+```js
+const REPO_ROOT = path.resolve(__dirname, '..');      // 截圖放這裡
+const EXT_DIR   = path.join(REPO_ROOT, 'extension');  // 擴充的檔案在這裡
+```
+
+擴充原本在 repo 根目錄，simulator 進來之後搬進 `extension/`。
+`SHOTS` 跟著 `REPO_ROOT`，其餘所有 `path.join(EXT_DIR, ...)` 跟著擴充。
+
 ## 與上層的關係
 
-`verify.js` 的 `EXPECT` 直接 `require('../defaults.js')`，與擴充共用同一份預設值。
+`verify.js` 的 `EXPECT` 直接 `require('../extension/defaults.js')`，與擴充共用同一份預設值。
 **改預設座標只要改 `defaults.js` 那一份**，這裡不必動。
 
 （早期版本這裡是手抄副本，需要兩邊同步；那個陷阱已經拆掉了，別再裝回去。）

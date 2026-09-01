@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Location Test</title>
+<style>
+  body { font: 16px/1.6 -apple-system, "Noto Sans TC", sans-serif; margin: 3rem auto; max-width: 32rem; }
+  h1 { font-size: 1.1rem; color: #666; font-weight: 600; margin-bottom: 1.5rem; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: .4rem 1.2rem; }
+  dt { color: #888; }
+  dd { margin: 0; font-variant-numeric: tabular-nums; }
+  #status { margin-top: 1.5rem; padding: .6rem 1rem; border-radius: 6px; background: #eee; }
+  .ok { background: #e6f4ea !important; color: #1e7e34; }
+  .err { background: #fce8e6 !important; color: #c5221f; }
+  p.note { color: #999; font-size: .85rem; margin-top: 2rem; }
+</style>
+</head>
+<body>
+<h1>navigator.geolocation 回報的位置</h1>
+<dl>
+  <dt>Latitude</dt><dd id="lat">—</dd>
+  <dt>Longitude</dt><dd id="lng">—</dd>
+  <dt>Accuracy</dt><dd id="acc">—</dd>
+  <dt>Timestamp</dt><dd id="ts">—</dd>
+</dl>
+<div id="status">查詢中…</div>
+<p class="note">
+  這一頁只呼叫 <code>navigator.geolocation</code>，完全不查 IP ——
+  所以顯示什麼座標，就是瀏覽器實際回報給網站的座標。
+</p>
+
+<script>
+// window.__result 是給 Simulator 用 CDP 讀的收口。
+// 沒有它就得去解析畫面文字，那會被語系與排版牽著走。
+window.__result = null;
+
+function show(id, value) { document.getElementById(id).textContent = value; }
+
+navigator.geolocation.getCurrentPosition(
+  function (position) {
+    var c = position.coords;
+    window.__result = {
+      ok: true,
+      lat: c.latitude, lng: c.longitude, accuracy: c.accuracy,
+      timestamp: position.timestamp,
+    };
+    show('lat', c.latitude);
+    show('lng', c.longitude);
+    show('acc', '± ' + c.accuracy + ' m');
+    show('ts', new Date(position.timestamp).toLocaleString());
+    var s = document.getElementById('status');
+    s.textContent = '已取得位置';
+    s.className = 'ok';
+  },
+  function (error) {
+    // code 1 = PERMISSION_DENIED，那是權限問題不是模擬失敗（計畫 §10），
+    // 所以原樣把 code 交出去，判斷留給 Simulator。
+    window.__result = { ok: false, code: error.code, message: error.message };
+    var s = document.getElementById('status');
+    s.textContent = 'ERROR ' + error.code + '：' + error.message;
+    s.className = 'err';
+  },
+  { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+);
+</script>
+</body>
+</html>

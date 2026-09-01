@@ -1,14 +1,29 @@
-# geo-mock
+# geo-mock — GPS / Location Simulator
 
-開發用的 Chrome 定位覆寫擴充。輸入地址或選已存地點，讓瀏覽器對任何網站回報指定的
-GPS 座標，用來檢視系統在不同區域的呈現結果。通用工具，不綁特定網站。
+輸入經緯度，讓瀏覽器的 `navigator.geolocation` 回傳指定座標，用來檢視系統在不同
+區域的呈現結果。通用工具，不綁特定網站。
 
-**完整規格見 [SPEC.md](SPEC.md)** — 三種模式行為、Popup 面板版面、Nominatim 使用政策、
-三版實作優先順序。本檔只放每輪都該遵守的約束與慣例。
+repo 裡有**兩種產物**，都在做同一件事，走的路不同：
+
+| | `simulator/`（Python） | `extension/`（Chrome 擴充） |
+|---|---|---|
+| 覆寫在哪 | 瀏覽器內部（CDP，Blink 層） | 頁面的 JS 環境 |
+| 用哪個瀏覽器 | 自己起一個獨立 profile 的 Chrome | 你日常那個 Chrome |
+| 頁面能否看穿／繞過 | 不能 | **能**（見「已知限制」） |
+| 現況 | 預設，三項驗收全綠 | 可獨立使用，但 Simulator 還沒接上它 |
+
+**完整規格見 [SPEC.md](SPEC.md)**。本檔只放每輪都該遵守的約束與慣例。
 
 ## 技術棧
 
-Manifest V3、純原生 JS。無 build 工具、無套件管理器、無測試框架。
+| | |
+|---|---|
+| `extension/` | Manifest V3、純原生 JS。**無 build 工具、無套件管理器、無測試框架** |
+| `simulator/` | Python 3.10+、`uv`、唯一相依 `websocket-client`。細節見 `simulator/CLAUDE.md` |
+| `tools/` | Node + Playwright（刻意不列為相依，runtime 才找） |
+
+上面那條「無套件管理器」只約束擴充那一層 —— 它的用意是「擴充不需要編譯就能載入」，
+不是禁止 repo 裡出現任何套件管理器。
 
 ## 目錄結構
 
@@ -17,27 +32,16 @@ geo-mock/
 ├─ README.md          # 對外簡介、安裝與使用說明
 ├─ SPEC.md            # 功能規格
 ├─ CLAUDE.md          # 本檔：架構約束與開發流程
-├─ manifest.json
-├─ defaults.js        # 設定預設值，bridge/options/verify 三方共用的唯一一份
-├─ inject.js          # world: MAIN, run_at: document_start — 實際覆寫 geolocation
-├─ bridge.js          # world: ISOLATED, run_at: document_start — 讀 storage 推給 inject
-├─ sites.js           # 排除清單的比對規則。content script 與擴充頁共用一份
-├─ i18n.js            # 介面文字（繁中／英文）與套用到 DOM 的工具。popup/options/SW 共用
-├─ _locales/          # 只放 manifest 的擴充描述；介面文字不走這裡（見架構約束）
-├─ background.js      # service worker。唯一任務：代 popup 執行地址查詢
-├─ geocode.js         # Nominatim 查詢、快取、每秒 1 次閘門。由 background.js importScripts
-├─ rules.json         # declarativeNetRequest 規則：送 Nominatim 前改寫 User-Agent
-├─ popup.html / popup.js       # 啟用開關、地址搜尋、模式切換（固定／抖動）、
-│                             #   目前座標一覽、已存地點 chips、
-│                             #   「這個網站不要覆寫」、語言選單、進階設定連結
-├─ options.html / options.js   # 座標與抖動半徑（按儲存才寫）、排除清單編輯器（即時存）。
-│                             #   最上面的「貼上座標」欄接 Google Maps 右鍵複製的
-│                             #   「緯度, 經度」整串，拆進下面兩欄
-├─ icons/16.png 48.png 128.png
-└─ tools/             # 驗證腳本，不會被打包進擴充（見 tools/CLAUDE.md）
+├─ simulator/         # Python GPS Simulator（見 simulator/CLAUDE.md）
+│  └─ gpssim/         #   coords / detect / cdp / chrome / providers / verify / report / cli
+├─ extension/         # Chrome 擴充（見 extension/CLAUDE.md）
+│  ├─ manifest.json defaults.js inject.js bridge.js sites.js i18n.js
+│  ├─ background.js geocode.js rules.json popup.* options.*
+│  └─ _locales/ icons/
+└─ tools/             # 擴充的驗證腳本，不會被打包進擴充（見 tools/CLAUDE.md）
 ```
 
-## 架構約束（已定案，不重新討論）
+## 擴充的架構約束（已定案，不重新討論）
 
 - 覆寫對象是 `navigator.geolocation`，必須跑在頁面自己的 JS 環境
 - **兩個 content script 都要 `all_frames: true` **與** `match_about_blank: true`**：
@@ -100,12 +104,23 @@ geo-mock/
 
 ## 不要做的事
 
+**兩層共通：**
+
+- 不改 Google Maps 的 HTML / JS / DOM，不攔它的 API，不靠改 URL 假裝定位變了 ——
+  真正要控制的只有 geolocation 來源
+- 不把 VPN / IP spoofing / DNS / Wi-Fi 那類手段當成 GPS 模擬
+- 按下 Start 就印 SUCCESS 不算數，一定要實際讀 `navigator.geolocation` 驗過
+
+**只針對 `extension/`：**
+
 - 不引入 build 工具、TypeScript、React
 - 第一版不做地圖 picker（Leaflet 要打包進擴充，體積和複雜度大一個量級）
 - 不為了通用性預先實作沒撞到的相容處理
 - 不擅自跳過 SPEC.md 的三版優先順序去做第三版項目
 
-## 已知陷阱（寫 code 前先看）
+## 擴充的已知陷阱（寫 code 前先看）
+
+> 這一節也全是 `extension/` 的事；simulator 的踩雷在 `simulator/CLAUDE.md`。
 
 1. **時序**：`chrome.storage.local.get` 是非同步，頁面可能在設定送達前就呼叫定位 API。
    `inject.js` 要把請求排隊，等設定到達再回應。**這段不能省。**
@@ -149,14 +164,24 @@ geo-mock/
 ## 開發流程（每個功能段落依序走）
 <!-- dd-loop-version: 8step；供 /dd-init 判斷是否提議升級，勿刪 -->
 
-1. **實作功能 + 首輪測試通過**（本專案無測試框架 → 退化為「擴充能載入且手動走過該功能」，
+1. **實作功能 + 首輪測試通過**（本專案無單元測試框架 → 退化為「跑得起來且手動走過該功能」：
+   simulator 用 `uv run python -m gpssim.cli`，擴充用「能載入且手動操作一遍」。
    不可帶紅燈進 commit）
 2. **commit**（第一次 — 保留簡化前還原點）
 3. 跑 **code-simplifier**（對該段新增/修改的程式碼，官方 agent）
 4. 跑 **code-review**（該段 diff，每段全量跑；修掉 Critical/Important 才續行）
-5. **再測一次** — 確認步驟 3、4 沒破壞行為：
-   - `node tools/verify.js` —— exit 0 才算過。它會開真實瀏覽器載入未封裝擴充，
-     斷言覆寫生效、請求排隊、以及設定永不到達時不會懸掛（細節見 tools/CLAUDE.md）
+5. **再測一次** — 確認步驟 3、4 沒破壞行為。**動到哪一層就跑哪一層，兩層都動就兩個都跑**：
+   - 改到 `simulator/`：
+     ```bash
+     cd simulator
+     uv run python -m gpssim.cli detect
+     uv run python -m gpssim.cli maps --coords "25.033964, 121.564468"   # exit 0 才算過
+     ```
+     `maps` 會實際開 Chrome、開 Google Maps、按定位鈕、存截圖到 `.screenshots/`。
+     **三項全 PASS 才算過**，`UNVERIFIED` 要看截圖確認藍點再判斷
+   - 改到 `extension/`：`node tools/verify.js` —— exit 0 才算過。它會開真實瀏覽器
+     載入未封裝擴充，斷言覆寫生效、請求排隊、以及設定永不到達時不會懸掛
+     （細節見 tools/CLAUDE.md）
    - **只能用 Chrome for Testing。系統的 Chrome stable 不行** —— 151 實測已忽略
      `--load-extension`，擴充根本不載入，而且沒有任何錯誤訊息，很容易誤判成程式有 bug
    - 手動確認時：`chrome://extensions` → 開發者模式 → 重新載入該擴充，
@@ -184,7 +209,10 @@ geo-mock/
 
 驗證不過 → 修完重跑步驟 5，不可帶著紅燈進步驟 6。
 
-## 已知限制（review 提出，刻意不修，別當成 bug 重查）
+## 擴充的已知限制（review 提出，刻意不修，別當成 bug 重查）
+
+> **這一節講的全是 `extension/`。** simulator 走 CDP，下列每一條都不適用 ——
+> 它的踩雷與限制寫在 `simulator/CLAUDE.md`。
 
 - **覆寫可被頁面看穿也可被關掉**：`geo-mock:settings` / `geo-mock:ready` 是 document
   上的普通 CustomEvent，頁面自己的 JS 能監聽（讀到你設的座標）也能偽造

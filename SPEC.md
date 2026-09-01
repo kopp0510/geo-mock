@@ -1,5 +1,8 @@
 # Geo Mock — Chrome 擴充規格
 
+> **這份文件只涵蓋 `extension/` 這一層。** Simulator（`simulator/`）的規格見下方
+> 「Provider 分層」與 `simulator/CLAUDE.md`。
+
 > 架構約束、檔案結構、已知實作陷阱、「不要做的事」已移至 [CLAUDE.md](CLAUDE.md)。
 > 本檔只放規格本體：功能行為、介面版面、外部服務政策、實作順序。
 
@@ -166,3 +169,45 @@ Chrome 根本不替擴充頁的 fetch 送這個 header。等於兩條識別路�
     規則放在 `sites.js`，content script 與擴充頁共用一份。
     清單本身**不送進 MAIN world** —— 那是一份使用者關心哪些網站的清單，
     頁面讀得到就等於白送一份瀏覽偏好（見 `bridge.js` 的 `NOT_SENT`）
+
+---
+
+## Provider 分層（Simulator）
+
+Simulator 把「怎麼改掉定位」抽成 provider，介面在
+`simulator/gpssim/providers/base.py`：`is_supported()` / `start()` / `stop()`。
+換 OS 或換瀏覽器時只加新的 provider，不動上層。
+
+優先順序與現況：
+
+| 順位 | Provider | 層級 | 現況 |
+|---|---|---|---|
+| 1 | `OsNativeProvider` | OS | **所有平台皆不支援**。macOS 沒有系統層的定位注入 API；Windows 只有「設定」裡的手動選項；Linux 視 GeoClue／gpsd 而定且 Chrome 多半不走它 |
+| 2 | `ChromeCdpProvider` | 瀏覽器 | **預設，唯一實作**。CDP `Emulation.setGeolocationOverride`，即 DevTools「Sensors → Location」背後那支命令 |
+| 3 | `ExtensionProvider` | 頁面 JS | 就是 `extension/` 這個擴充。**尚未接上**，目前只能手動安裝使用 |
+
+第 1 順位在每個平台都是完全不同的機制、零共用，而第 2 順位一份程式碼吃三個 OS ——
+這是把 CDP 當預設的主要理由。
+
+### 為什麼不用擴充當 Simulator 的預設
+
+擴充覆寫的是 `navigator.geolocation` 的**實例屬性**（`extension/inject.js:198`），
+`Geolocation.prototype.getCurrentPosition.call(navigator.geolocation, …)` 走的是原生；
+回傳的也不是真的 `GeolocationPosition`。CDP 的覆寫發生在 Blink 內部，
+頁面看不出來也繞不過去。
+
+擴充的價值在另一邊：它裝在使用者日常的 Chrome 上，而 CDP 一定要自己起一個獨立
+profile 的 Chrome（Chrome 136 起禁止對預設 user-data-dir 開偵錯連線），
+那個瀏覽器沒有登入 Google。兩者互補，所以擴充留著，只是排在後面。
+
+### 驗收條件
+
+按下 Start 之後程式印 SUCCESS **不算數**，必須實際讀 `navigator.geolocation`：
+
+1. `navigator.geolocation returns simulated location` —— 自家測試頁，距離 < 10 m
+2. `Google Maps receives simulated location` —— Maps 頁面內實測，距離 < 10 m
+3. `Google Maps Your Location is near target` —— 按下定位鈕後地圖中心 < 200 m，
+   並存截圖供人眼確認藍點
+
+一律比距離不比字串。找不到定位鈕之類的情況回報 `UNVERIFIED` 而非 `FAIL` ——
+「測不到」與「模擬失敗」是兩件事。

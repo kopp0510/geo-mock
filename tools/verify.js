@@ -16,11 +16,14 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const EXT_DIR = path.resolve(__dirname, '..');
+// repo 根目錄與擴充目錄自從 simulator 進來之後就不是同一層了：
+// 截圖放 repo 根，擴充的檔案在 extension/。
+const REPO_ROOT = path.resolve(__dirname, '..');
+const EXT_DIR = path.join(REPO_ROOT, 'extension');
 const FIXTURES = path.join(__dirname, 'fixtures');
 const PORT = Number(process.env.PORT) || 0;
 const EXPECTED_ASSERTIONS = 14;
-const SHOTS = path.join(EXT_DIR, '.screenshots');
+const SHOTS = path.join(REPO_ROOT, '.screenshots');
 const MOVED = { lat: 35.6812, lng: 139.7671, accuracy: 55 };   // 東京車站 —— 刻意挑一組非預設值
 const LIVE = { lat: 48.8584, lng: 2.2945, accuracy: 12 };      // 巴黎鐵塔 —— 驗即時推送用的第二組
 const JITTER_RADIUS = 100;                                     // 公尺，驗 jitter 用

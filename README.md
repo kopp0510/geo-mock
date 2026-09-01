@@ -1,6 +1,7 @@
 # geo-mock — 讓瀏覽器假裝你在別的地方
 
-這是一個 Chrome 擴充功能。裝上之後，你可以指定一組 GPS 座標，**所有網站問你在哪裡的時候，瀏覽器都會回報你指定的那組座標**，而不是你真正的位置。
+指定一組 GPS 座標，**網站問你在哪裡的時候，瀏覽器就回報你指定的那組座標**，
+而不是你真正的位置。
 
 用來做什麼：
 
@@ -8,13 +9,83 @@
 - 外送、地圖、找門市這類功能，想測「使用者在很遠的地方」時畫面長怎樣
 - 想確認網站在拿不到位置、或位置一直微幅飄動時會不會出錯
 
+> **這是開發／測試工具。** 它只影響你自己這台電腦的瀏覽器，不會讓你「真的」出現在別的地方。
+
+---
+
+## 兩種用法，挑一個
+
+| | **Simulator**（`simulator/`） | **擴充功能**（`extension/`） |
+|---|---|---|
+| 怎麼運作 | Python 程式起一個專用的 Chrome，用 Chrome 官方的偵錯協定改掉定位 | 裝進你日常的 Chrome，在網頁裡換掉定位功能 |
+| 用哪個瀏覽器 | 它自己開的那個視窗（沒登入 Google） | 你平常在用的那個 |
+| 網站看得穿嗎 | 看不穿，也繞不過 | **看得穿，也繞得過** |
+| 會自己驗證嗎 | 會，跑完直接告訴你 PASS / FAIL | 不會，要自己看 |
+| 適合 | 要**確定**真的生效（例如 Google Maps 的藍點） | 平常隨手切座標、多個分頁一起用 |
+
+兩個是獨立的，不互相依賴。
+
+---
+
+## Simulator 快速上手
+
+需要 [uv](https://docs.astral.sh/uv/)（Python 的套件管理器）與 Google Chrome。
+
+```bash
+cd simulator
+uv sync
+
+# 看看這台電腦支援哪些做法
+uv run python -m gpssim.cli detect
+
+# 開始模擬並實際驗證（會開一個 Chrome 視窗）
+uv run python -m gpssim.cli maps --coords "25.033964, 121.564468"
+```
+
+跑完會印出這樣的結果，**三項都 PASS 才算真的成功**：
+
+```
+Platform:                    Darwin 14.6.1 (arm64)
+Browser:                     Google Chrome 152.0.7977.65
+Location Simulation Method:  CDP Emulation.setGeolocationOverride
+Supported:                   YES
+
+navigator.geolocation:       PASS  (0.00 m)
+Google Maps (geolocation):   PASS  (0.00 m)
+Google Maps (Your Location): PASS  (0.00 m)
+```
+
+它還會把 Google Maps 的截圖存到 `.screenshots/`，可以直接看藍點在不在正確位置。
+
+想讓瀏覽器一直開著自己操作，用 `start` 代替 `maps`：
+
+```bash
+uv run python -m gpssim.cli start --coords "25.033964, 121.564468" --maps
+```
+
+按 Enter 就會停止模擬並關掉那個 Chrome。
+
+**注意**：它一定會自己開一個新的 Chrome，不能接管你正在用的那個 ——
+Chrome 136 之後為了保護日常 profile 的資料，禁止對預設 profile 開偵錯連線。
+所以那個視窗沒有登入你的 Google 帳號。
+
+其他指令與踩過的雷見 [`simulator/CLAUDE.md`](simulator/CLAUDE.md)。
+
+---
+
+# 擴充功能
+
+以下是**擴充功能**的說明。想用 Simulator 的話上面那段就夠了。
+
+裝上之後，你可以指定一組 GPS 座標，所有網站問你在哪裡的時候，瀏覽器都會回報你指定的那組座標。
 它不綁定特定網站，對任何網站都有效。
 
-> **這是開發／測試工具。** 它只影響你自己這台電腦的瀏覽器，不會讓你「真的」出現在別的地方，也不適合拿來規避網站的地區限制 —— 會認真檢查的網站有辦法看穿它（見最後的「它的極限」）。
+> 不適合拿來規避網站的地區限制 —— 會認真檢查的網站有辦法看穿它（見最後的「它的極限」）。
 
 ---
 
 ## 開始之前
+
 
 - 需要 **Chrome 111 或更新的版本**。不確定的話開 Chrome 選單 →「說明」→「關於 Google Chrome」看得到版本號
 - 不需要註冊帳號、不需要任何金鑰
@@ -36,7 +107,8 @@
   git clone git@github.com:kopp0510/geo-mock.git
   ```
 
-解開後那個資料夾裡應該看得到 `manifest.json` 這個檔案 —— **等一下要選的就是「包含 `manifest.json` 的那一層資料夾」**，這是最常選錯的地方。
+解開後，擴充功能的檔案在 **`extension/` 這個子資料夾**裡，裡面看得到 `manifest.json`。
+**等一下要選的就是 `extension/` 這一層，不是最外層的 `geo-mock/`** —— 這是最常選錯的地方。
 
 ### 2. 打開 Chrome 的擴充功能頁
 
@@ -54,7 +126,7 @@ chrome://extensions
 
 ### 4. 載入資料夾
 
-點左上角的「**載入未封裝項目**」，選你在第 1 步解開的那個資料夾（包含 `manifest.json` 的那一層），按「選取」。
+點左上角的「**載入未封裝項目**」，選第 1 步那個資料夾裡的 **`extension/`**（包含 `manifest.json` 的那一層），按「選取」。
 
 成功的話，頁面上會出現一張 geo-mock 的卡片，而且你的 Chrome 工具列（網址列右邊）會多一個圖示。
 
@@ -205,14 +277,17 @@ git pull
 ## 給要改程式的人
 
 ```bash
-node tools/verify.js        # exit 0 = 十四項斷言全過
+node tools/verify.js                                                # 擴充：exit 0 = 十四項斷言全過
+cd simulator && uv run python -m gpssim.cli maps --coords "25.0,121.5"   # Simulator：三項全 PASS
 ```
 
 需要 playwright 與 Chrome for Testing（**系統的 Chrome stable 不行**，151 起已忽略 `--load-extension`，而且不會有任何錯誤訊息）。細節見 [tools/CLAUDE.md](tools/CLAUDE.md)。
 
-技術上是 Manifest V3、純原生 JS，沒有 build 工具也沒有相依套件。地址搜尋用 [Nominatim](https://nominatim.openstreetmap.org/)，資料來源 © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors；它的[使用政策](https://operations.osmfoundation.org/policies/nominatim/)是硬約束（每秒至多 1 次、必須快取、必須以可識別的 User-Agent 送出、必須標示出處、不得實作打字即查），相關程式碼集中在 `geocode.js`、`rules.json` 與 `background.js`。
+擴充在技術上是 Manifest V3、純原生 JS，沒有 build 工具也沒有相依套件（Simulator 是 Python + `uv`，兩層的技術棧刻意不同）。地址搜尋用 [Nominatim](https://nominatim.openstreetmap.org/)，資料來源 © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors；它的[使用政策](https://operations.osmfoundation.org/policies/nominatim/)是硬約束（每秒至多 1 次、必須快取、必須以可識別的 User-Agent 送出、必須標示出處、不得實作打字即查），相關程式碼集中在 `extension/geocode.js`、`extension/rules.json` 與 `extension/background.js`。
 
 **要給不特定公眾使用（上架）之前必須換掉地址搜尋服務** —— 那條政策的每秒 1 次是「所有使用者流量的總和」，而且要求能在對方要求時不透過版本更新就切換服務。
 
 - [SPEC.md](SPEC.md) — 功能規格與實作順序（三版全部走完）
-- [CLAUDE.md](CLAUDE.md) — 架構約束、已知陷阱、已知限制、開發流程
+- [CLAUDE.md](CLAUDE.md) — 兩層的分工、架構約束、已知陷阱、開發流程
+- [simulator/CLAUDE.md](simulator/CLAUDE.md) — Simulator 的架構與踩過的雷
+- [extension/CLAUDE.md](extension/CLAUDE.md) — 擴充這一層的職責與約束
