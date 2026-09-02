@@ -267,7 +267,11 @@ CI 有一步 `MpCmdRun.exe -SignatureUpdate` + `-Scan -ScanType 3` 掃自己的�
 **只印結果、`continue-on-error`，不擋發布**。特徵庫每天在動，讓它決定能不能發版
 會讓發布隨機失敗；它的用途是「改了打包方式之後誤判有沒有改善」的觀測點。
 
-實測大小：Windows onefile 47 MB（v0.2.1，已停用）、macOS arm64 37 MB。
+實測大小（2026-09-02，run `33655917113`）：Windows onedir 整包 120.4 MB，
+壓成 zip 後 49.2 MB；zip 內部是 `GPS-Simulator/GPS-Simulator.exe` + `_internal/`
+共 212 個項目，測試頁在 `_internal/gpssim/testpage/`。
+對照組：onefile 單檔 47 MB（v0.2.1，已停用）、macOS arm64 37 MB。
+同一輪的 Defender 掃描回 `found no threats`（特徵庫 1.459.11.0）。
 Windows 版沒有簽章，第一次開會被 SmartScreen 擋（「其他資訊」→「仍要執行」），
 做法與防毒誤判的救回步驟都寫在 `.github/release-notes.md`。
 
