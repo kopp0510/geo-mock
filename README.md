@@ -17,8 +17,7 @@
 ## Windows：下載就能用（不必裝 Python、不用開終端機）
 
 到 [**Releases**](https://github.com/kopp0510/gps-simulator/releases/latest) 下載
-[`GPS-Simulator-windows.zip`](https://github.com/kopp0510/gps-simulator/releases/latest/download/GPS-Simulator-windows.zip)，
-**整包解壓縮**後點裡面的 `GPS-Simulator.exe`。
+`GPS-Simulator-windows.zip`，**整包解壓縮**後點裡面的 `GPS-Simulator.exe`。
 （資料夾裡其他檔案是程式要用的，別只把 exe 搬出來。）
 
 **要先裝 [Google Chrome](https://www.google.com/chrome/)** —— 這個工具是驅動 Chrome，不自帶瀏覽器。

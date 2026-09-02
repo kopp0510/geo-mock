@@ -172,24 +172,34 @@ git tag v0.3.0
 git push origin v0.3.0
 ```
 
-CI 在打包前跑 `set_version.py`，把版本灌進 `pyproject.toml` 與 `__version__`。
+CI 在**打 tag 時**打包前跑 `set_version.py`，把版本灌進 `pyproject.toml` 與 `__version__`。
+dispatch 不跑它（`main` 不是版本字串，`set_version.py` 會回 exit 2），
+所以 dispatch 打出來的執行檔停在 `0.0.0+dev` —— 那正好，它本來就不是正式版。
 
-**CI 的分工**（`.github/workflows/windows.yml`）：
+**CI 的分工**（`.github/workflows/windows.yml`）。這張表是觸發條件的唯一出處，
+下面「打包」節只引用它，不要在那裡重寫一份條件：
 
 | 觸發 | 跑什麼 |
 |---|---|
 | 推 `main` | 只有 `smoke` —— 在 **Windows 與 macOS** 上各從原始碼驗一次 |
 | 推 `v*` tag | `smoke` + **只有 Windows** 打包 + 發布到 Releases |
+| 手動 `workflow_dispatch` | `smoke` + Windows 打包 + Defender 掃描，**不發 Releases** |
 
 `smoke` 是 matrix（`windows-latest` + `macos-latest`），**macOS 唯一的驗證關卡就是它** ——
 沒有 macOS 打包 job 了（見下方「打包」節），拿掉 matrix 那條腿 macOS 就完全沒人把關。
 matrix 的 artifact 名稱一定要帶 `${{ runner.os }}`：`upload-artifact@v4` 對重名是**直接報 409**，
 不是覆蓋，兩條腿共用一個名字會讓整輪紅在最後一步。
 
-**打包的 job 有 `if: startsWith(github.ref, 'refs/tags/v')`，別拿掉** ——
-少了它，一次發版會跑兩輪一模一樣的打包（推 main 一次、推 tag 一次）。
-代價是打包壞掉要到打 tag 才發現，但那時自我驗證會擋下發布，
-修完重打一個 tag 就好，不會有壞檔案流出去。
+**打包的 job 條件是 `startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'`，
+兩邊都別拿掉**：少了 tag 那半，發版時不會打包；少了 dispatch 那半，
+改打包方式就得靠發版才測得到（防毒誤判那次就是這樣才加的）。
+**但不可以放寬成「推 main 也打包」** —— 那會讓一次發版跑兩輪一模一樣的打包
+（推 main 一次、推 tag 一次）。代價是打包壞掉要到打 tag 才發現，
+但那時自我驗證會擋下發布，修完重打一個 tag 就好，不會有壞檔案流出去。
+
+**「發布到 Releases」那一步的條件要連 `github.event_name == 'push'` 一起判。**
+dispatch 的 ref 選單可以選 tag，只判 `startsWith` 的話，
+有人選 `v0.2.1` 來測打包就會把 zip 傳進那個既有的 release。
 **不要手動改那兩個地方** —— 多一個要記得改的地方就多一個會忘的地方，
 這支腳本存在的理由就是修掉那個不一致（tag 已經 v0.2.0，那兩處還停在 0.1.0）。
 
@@ -198,9 +208,9 @@ matrix 的 artifact 名稱一定要帶 `${{ runner.os }}`：`upload-artifact@v4`
 
 ## 打包（onedir + zip）
 
-`.github/workflows/windows.yml` 在 CI 上用 PyInstaller 打包，打 tag（`v*`）就發到 Releases。
-手動 `workflow_dispatch` 也會打包（跑到掃毒為止，**不發 Releases**）——
-改打包方式時用這條路驗，不必為了測試而發一個版。
+`.github/workflows/windows.yml` 在 CI 上用 PyInstaller 打包。
+**觸發條件看上面「版本號」節那張表**，別在這裡另記一份。
+要點只有一條：改打包方式時走手動 `workflow_dispatch`，不必為了測試而發一個版。
 
 > **macOS 打包已於 2026-09-01 移出 CI**（只剩 Windows）。理由不是打包壞掉，是**沒人打得開**：
 > 未簽章的 `.app` 下載後帶 `com.apple.quarantine`，雙擊只會得到「無法打開，因為 Apple

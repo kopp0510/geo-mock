@@ -14,9 +14,11 @@ on:
     tags: ['v*']          # 驗 + 打包 + 發一版到 Releases
   workflow_dispatch:
 
-# 同一個 ref 連續推的話，舊的那輪直接取消，不要排隊佔 runner
+# 同一個 ref 連續推的話，舊的那輪直接取消，不要排隊佔 runner。
+# group 要帶 event_name —— 少了它，手動 dispatch 測打包測到一半推個 commit 到 main，
+# 那輪 dispatch 就被當成「同一組的舊執行」砍掉。
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -168,15 +170,27 @@ jobs:
       # 這是「有沒有改善」的觀測點，不是通過條件：特徵庫每天在動，
       # 讓它決定能不能發版會讓發布隨機失敗。
       # -SignatureUpdate 不能省：runner 映像上的特徵庫可能是幾天前的。
+      #
+      # **這一步掃不到真正出事的那條路徑。** 使用者那次是「下載後」被刪的 ——
+      # 檔案帶 Mark-of-the-Web、走雲端遞送防護；這裡掃的是建置目錄裡沒有 MOTW 的檔案，
+      # 幾乎必然回乾淨。掃到東西一定有問題，掃不到不代表沒事。
+      #
+      # 掃到威脅時 MpCmdRun 回非零，Actions 的 pwsh wrapper 會把它變成紅色失敗 ——
+      # 由 continue-on-error 吸收。那個紅 X 是預期行為，不是 CI 壞了。
+      # `!cancelled()` 不要寫成 `always()`：打包失敗時 always() 會讓這步照跑，
+      # 掃一個不存在的路徑，MpCmdRun 回非零 → log 印出「Defender 對打包產出有意見」，
+      # 看的人會以為 exe 被判了，實際上是根本沒產出。下面的 Test-Path 是第二道。
       - name: Defender 掃一次（只觀測）
-        if: always()
+        if: ${{ !cancelled() }}
         shell: pwsh
         continue-on-error: true
         run: |
           $mp = "$env:ProgramFiles\Windows Defender\MpCmdRun.exe"
           if (-not (Test-Path $mp)) { Write-Host "::warning::找不到 MpCmdRun.exe，跳過掃描"; exit 0 }
-          & $mp -SignatureUpdate | Out-Null
-          $out = & $mp -Scan -ScanType 3 -File "$PWD\dist\GPS-Simulator" 2>&1 | Out-String
+          if (-not (Test-Path "dist\GPS-Simulator")) { Write-Host "::warning::沒有產出可掃，跳過"; exit 0 }
+          # 更新失敗不算罕見，把輸出印出來才查得到，不要 Out-Null 吞掉
+          & $mp -SignatureUpdate | Out-String | Write-Host
+          $out = & $mp -Scan -ScanType 3 -File "$PWD\dist\GPS-Simulator" | Out-String
           Write-Host $out
           # 找到威脅時 MpCmdRun 回 2，乾淨是 0
           if ($LASTEXITCODE -ne 0) { Write-Host "::warning::Defender 對打包產出有意見（exit $LASTEXITCODE）" }
@@ -196,9 +210,10 @@ jobs:
           path: dist/GPS-Simulator-windows.zip
           if-no-files-found: error
 
-      # dispatch 只是為了看打包與掃毒結果，不能順手發一版出去
+      # 條件要連 `github.event_name == 'push'` 一起看：dispatch 的 ref 選單**可以選 tag**，
+      # 只判 startsWith 的話，有人選 v0.2.1 來測打包就會把 zip 傳進那個既有的 release。
       - name: 發布到 Releases
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: dist/GPS-Simulator-windows.zip
