@@ -29,6 +29,14 @@ uv run python -m gpssim.cli route --file trip.gpx --kmh 50
 uv run python -m gpssim.cli route --waypoints "25.03,121.56; 25.04,121.57" --speed 30
 ```
 
+手動觸發 CI 打包（測打包方式用，不會發版）：
+
+```bash
+gh workflow run windows.yml --ref main
+gh run list --workflow=windows.yml --limit 3     # 拿 run id
+gh run download <run-id> -n GPS-Simulator-windows -D ~/Downloads
+```
+
 路線檔支援 `.gpx` `.kml` `.geojson` `.json` `.txt` `.csv`。
 `--loop --laps N` 繞圈，`--interval` 改更新間隔，`--maps` 順便開 Google Maps
 （只印觀察，不列入判定，理由見下方已知限制）。
@@ -51,6 +59,11 @@ exit code：
 gps-simulator/             ← repo 根目錄就是專案本體
 ├─ pyproject.toml  uv.lock
 ├─ README.md  SPEC.md  CLAUDE.md
+├─ launch.py       # 只給 PyInstaller 用的進入點：帶參數走 CLI、不帶開 GUI
+├─ set_version.py  # CI 專用，把 git tag 灌進 pyproject.toml 與 __version__
+├─ .github/
+│  ├─ workflows/windows.yml  # 驗證 + 打包 + 發 Releases
+│  └─ release-notes.md       # 發版時當成 release body
 └─ gpssim/
    ├─ coords.py     # 座標驗證（±90 / ±180）、haversine、方位角、大圓推算。純函式
    ├─ geocode.py    # 地址搜尋（Nominatim）。政策全兌現在這一支，別在別處另開請求
@@ -172,8 +185,12 @@ git tag v0.3.0
 git push origin v0.3.0
 ```
 
-CI 在**打 tag 時**打包前跑 `set_version.py`，把版本灌進 `pyproject.toml` 與 `__version__`。
-dispatch 不跑它（`main` 不是版本字串，`set_version.py` 會回 exit 2），
+CI 在**打 tag 時**打包前跑 `set_version.py`，把版本灌進 `pyproject.toml` 與
+`gpssim/__init__.py` 的 `__version__`。**這兩個檔案的版本號不要手動改** ——
+多一個要記得改的地方就多一個會忘的地方，這支腳本存在的理由就是修掉那個不一致
+（tag 已經 v0.2.0，那兩處還停在 0.1.0）。
+
+dispatch 不跑 `set_version.py`（`main` 不是版本字串，會回 exit 2），
 所以 dispatch 打出來的執行檔停在 `0.0.0+dev` —— 那正好，它本來就不是正式版。
 
 **CI 的分工**（`.github/workflows/windows.yml`）。這張表是觸發條件的唯一出處，
@@ -187,8 +204,9 @@ dispatch 不跑它（`main` 不是版本字串，`set_version.py` 會回 exit 2�
 
 `smoke` 是 matrix（`windows-latest` + `macos-latest`），**macOS 唯一的驗證關卡就是它** ——
 沒有 macOS 打包 job 了（見下方「打包」節），拿掉 matrix 那條腿 macOS 就完全沒人把關。
-matrix 的 artifact 名稱一定要帶 `${{ runner.os }}`：`upload-artifact@v4` 對重名是**直接報 409**，
-不是覆蓋，兩條腿共用一個名字會讓整輪紅在最後一步。
+matrix 的 artifact 名稱一定要帶 `${{ matrix.runner }}`（**不是 `runner.os`** ——
+前者是自己在 matrix 裡寫死的值，不必賭 context 的拼法）：`upload-artifact@v4`
+對重名是**直接報 409**，不是覆蓋，兩條腿共用一個名字會讓整輪紅在最後一步。
 
 **打包的 job 條件是 `startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'`，
 兩邊都別拿掉**：少了 tag 那半，發版時不會打包；少了 dispatch 那半，
@@ -200,8 +218,6 @@ matrix 的 artifact 名稱一定要帶 `${{ runner.os }}`：`upload-artifact@v4`
 **「發布到 Releases」那一步的條件要連 `github.event_name == 'push'` 一起判。**
 dispatch 的 ref 選單可以選 tag，只判 `startsWith` 的話，
 有人選 `v0.2.1` 來測打包就會把 zip 傳進那個既有的 release。
-**不要手動改那兩個地方** —— 多一個要記得改的地方就多一個會忘的地方，
-這支腳本存在的理由就是修掉那個不一致（tag 已經 v0.2.0，那兩處還停在 0.1.0）。
 
 從原始碼跑會看到 `v0.0.0+dev`，那是刻意的：拿到執行檔的人一眼就知道
 是不是 Releases 上的正式版。版本會顯示在 GUI 標題列與 `detect` / `maps` 的報告第一行。
