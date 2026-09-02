@@ -272,6 +272,10 @@ CI 有一步 `MpCmdRun.exe -SignatureUpdate` + `-Scan -ScanType 3` 掃自己的�
 共 212 個項目，測試頁在 `_internal/gpssim/testpage/`。
 對照組：onefile 單檔 47 MB（v0.2.1，已停用）、macOS arm64 37 MB。
 同一輪的 Defender 掃描回 `found no threats`（特徵庫 1.459.11.0）。
+
+**v0.3.0 已由使用者在真的 Windows 上驗過**：從 Releases 用瀏覽器下載（帶
+Mark-of-the-Web、走得到當初刪掉 v0.2.1 的那條雲端遞送防護）、解壓、執行，
+沒有被防毒擋。onedir 這個改法有效，別再改回 onefile。
 Windows 版沒有簽章，第一次開會被 SmartScreen 擋（「其他資訊」→「仍要執行」），
 做法與防毒誤判的救回步驟都寫在 `.github/release-notes.md`。
 
