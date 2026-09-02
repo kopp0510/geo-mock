@@ -17,7 +17,9 @@
 ## Windows：下載就能用（不必裝 Python、不用開終端機）
 
 到 [**Releases**](https://github.com/kopp0510/gps-simulator/releases/latest) 下載
-[`GPS-Simulator.exe`](https://github.com/kopp0510/gps-simulator/releases/latest/download/GPS-Simulator.exe)。
+[`GPS-Simulator-windows.zip`](https://github.com/kopp0510/gps-simulator/releases/latest/download/GPS-Simulator-windows.zip)，
+**整包解壓縮**後點裡面的 `GPS-Simulator.exe`。
+（資料夾裡其他檔案是程式要用的，別只把 exe 搬出來。）
 
 **要先裝 [Google Chrome](https://www.google.com/chrome/)** —— 這個工具是驅動 Chrome，不自帶瀏覽器。
 
@@ -25,6 +27,15 @@
 
 程式沒有付費簽章（一年要數千到上萬台幣），所以會跳「已保護您的電腦」
 → 點「**其他資訊**」→「**仍要執行**」。
+
+### 防毒軟體把檔案刪掉的話
+
+未簽章的程式會被 Windows Defender 誤判。**Windows 安全性** → **病毒與威脅防護**
+→ **保護歷程記錄** → 找到那一筆 → **動作** → **允許在裝置上**，再重新下載。
+
+（v0.2.1 的下載檔是單一 exe，那種格式會把自己解壓到暫存資料夾再執行，
+最容易被啟發式判成木馬。之後的版本改發資料夾版的 zip 就是為了這件事。
+還是被擋的話，Windows 一樣可以走下面〈從原始碼跑〉那條路。）
 
 ## Mac：沒有下載檔，請從原始碼跑
 

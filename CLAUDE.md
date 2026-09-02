@@ -196,9 +196,11 @@ matrix 的 artifact 名稱一定要帶 `${{ runner.os }}`：`upload-artifact@v4`
 從原始碼跑會看到 `v0.0.0+dev`，那是刻意的：拿到執行檔的人一眼就知道
 是不是 Releases 上的正式版。版本會顯示在 GUI 標題列與 `detect` / `maps` 的報告第一行。
 
-## 打包（單一執行檔）
+## 打包（onedir + zip）
 
 `.github/workflows/windows.yml` 在 CI 上用 PyInstaller 打包，打 tag（`v*`）就發到 Releases。
+手動 `workflow_dispatch` 也會打包（跑到掃毒為止，**不發 Releases**）——
+改打包方式時用這條路驗，不必為了測試而發一個版。
 
 > **macOS 打包已於 2026-09-01 移出 CI**（只剩 Windows）。理由不是打包壞掉，是**沒人打得開**：
 > 未簽章的 `.app` 下載後帶 `com.apple.quarantine`，雙擊只會得到「無法打開，因為 Apple
@@ -211,9 +213,20 @@ matrix 的 artifact 名稱一定要帶 `${{ runner.os }}`：`upload-artifact@v4`
 
 ```bash
 # 本機要試的話
-uv run --extra gui --with pyinstaller pyinstaller --onefile --windowed --noconfirm \
+uv run --extra gui --with pyinstaller pyinstaller --onedir --windowed --noconfirm --noupx \
   --name "GPS-Simulator" --add-data "gpssim/testpage:gpssim/testpage" launch.py
 ```
+
+**不要改回 `--onefile`。** v0.2.1 發的就是 onefile 的單一 exe，使用者回報「下載完被
+Windows Defender 直接刪掉」（不是 SmartScreen 那個藍色視窗，是檔案整個消失）。
+onefile 的執行檔開起來會先把自己解壓到 `%TEMP%` 再執行，那個「自解壓後執行」正是
+防毒對未簽章程式最常見的啟發式判準。onedir 沒有那個行為。
+`--noupx` 同理：PyInstaller 找得到 UPX 就會自動用，UPX 壓過的更容易被判。
+（GitHub runner 預設沒裝 UPX，那行是防它哪天被裝上去。）
+
+**根本解是買程式碼簽章憑證**，但 2023 年起 CA/B 規則連 OV 憑證都強制私鑰放硬體
+token / 雲端 HSM，年費比想像高，所以沒買。onedir 只是降低誤判率，**不保證不被擋** ——
+README 與 release-notes 都寫了「保護歷程記錄 → 允許在裝置上」的救回步驟。
 
 三件事別動壞（第三條是 CI 專屬的）：
 
@@ -222,6 +235,10 @@ uv run --extra gui --with pyinstaller pyinstaller --onefile --windowed --noconfi
 - **`launch.py` 帶參數走 CLI、不帶開 GUI**。這是為了讓打包出來的東西自我驗證
   （`GPS-Simulator maps --coords ...`），不然打包壞掉只有人雙擊才會發現。
   現在只有 Windows 打包，所以只有那一個 job 跑這一步
+- **onedir 的執行檔在 `dist/GPS-Simulator/GPS-Simulator.exe`**，不是 `dist/GPS-Simulator.exe`。
+  自我驗證那步吃的是前者；Releases 發的是整個資料夾壓的
+  `GPS-Simulator-windows.zip`（`Compress-Archive`，內建，不必另外裝東西）。
+  使用者要整包解壓，**不能只把 exe 搬出來**
 - **（已停用，供日後恢復）macOS 要分 arm64 與 Intel 兩份**，PySide6 的 wheel 是分架構的。
   `.app` 是資料夾，要 `ditto -c -k --keepParent` 壓起來才保得住執行權限
 
@@ -236,8 +253,13 @@ uv run --extra gui --with pyinstaller pyinstaller --onefile --windowed --noconfi
   `$LASTEXITCODE` 是空字串 —— 症狀是 CI 印出「失敗（exit ）」，
   看起來像程式壞了，其實程式根本還沒跑完
 
-實測大小：Windows 47 MB、macOS arm64 37 MB。Windows 版沒有簽章，
-第一次開會被 SmartScreen 擋（「其他資訊」→「仍要執行」），做法寫在 `.github/release-notes.md`。
+CI 有一步 `MpCmdRun.exe -SignatureUpdate` + `-Scan -ScanType 3` 掃自己的產出，
+**只印結果、`continue-on-error`，不擋發布**。特徵庫每天在動，讓它決定能不能發版
+會讓發布隨機失敗；它的用途是「改了打包方式之後誤判有沒有改善」的觀測點。
+
+實測大小：Windows onefile 47 MB（v0.2.1，已停用）、macOS arm64 37 MB。
+Windows 版沒有簽章，第一次開會被 SmartScreen 擋（「其他資訊」→「仍要執行」），
+做法與防毒誤判的救回步驟都寫在 `.github/release-notes.md`。
 
 ## 已知限制（刻意不修）
 

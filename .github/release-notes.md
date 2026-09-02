@@ -2,14 +2,29 @@
 
 | 你的電腦 | 下載 |
 |---|---|
-| Windows | `GPS-Simulator.exe` |
+| Windows | `GPS-Simulator-windows.zip` |
 
 **要先裝 [Google Chrome](https://www.google.com/chrome/)** —— 這個工具是驅動 Chrome，不自帶瀏覽器。
+
+下載後**整包解壓縮**，再點裡面的 `GPS-Simulator.exe`。
+資料夾裡其他檔案是程式要用的，不能只把 exe 搬出來。
 
 ### 第一次打開會被 Windows 擋
 
 程式沒有付費簽章，所以會跳「已保護您的電腦」→ 點「**其他資訊**」→「**仍要執行**」。
 這是因為沒買簽章憑證，不是病毒。
+
+### 如果防毒軟體把檔案刪掉了
+
+未簽章的程式會被 Windows Defender 誤判，這一版已經改成資料夾版（不再是會自我解壓的
+單一執行檔）來降低誤判，但還是可能發生。要救回來：
+
+**Windows 安全性** → **病毒與威脅防護** → **保護歷程記錄** → 找到那一筆 →
+**動作** → **允許在裝置上**，然後回瀏覽器重新下載。
+
+不想處理的話，直接照下面〈Mac 請從原始碼跑〉那一節的方式跑 —— Windows 也適用，
+把 `curl` 那行換成到 [uv 官網](https://docs.astral.sh/uv/getting-started/installation/)
+下載安裝檔即可。
 
 ## Mac 請從原始碼跑（沒有下載檔）
 

@@ -1,4 +1,4 @@
-# 在真的 Windows / macOS 上驗這套能不能跑，然後把 Windows 版打包成單一執行檔。
+# 在真的 Windows / macOS 上驗這套能不能跑，然後把 Windows 版打包成 zip 發布。
 #
 # 打包與驗證一起做的理由：打包出來的東西要能自己跑驗證（`launch.py` 帶參數就走 CLI），
 # 不然「打包壞掉」只能靠人雙擊才發現。
@@ -88,13 +88,16 @@ jobs:
           path: .screenshots/
           if-no-files-found: warn
 
-  # **只在打 tag 時跑。** 推 main 也打包的話，一次發版會跑兩輪完全一樣的
-  # 打包（推 main 一次、推 tag 一次），白跑一遍。
+  # **只在打 tag 或手動 dispatch 時跑。** 推 main 也打包的話，一次發版會跑兩輪
+  # 完全一樣的打包（推 main 一次、推 tag 一次），白跑一遍。
   # 代價是打包壞掉要到打 tag 才發現 —— 但那時自我驗證會擋下發布，
   # 修完重打一個 tag 就好，不會有壞檔案流出去。
+  #
+  # 留 workflow_dispatch 這條路，是為了改打包方式（例如調防毒誤判）時
+  # **不必為了測試而發一個版**。dispatch 跑到打包與掃毒為止，不發 Releases。
   build-windows:
     needs: smoke
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 25
     # 預設的 GITHUB_TOKEN 是唯讀的，少了這行建 release 會 403
@@ -110,17 +113,27 @@ jobs:
 
       # 版本號的唯一來源是 git tag。原始碼裡固定是 0.0.0+dev，
       # 拿到執行檔的人一眼看得出「這不是 Releases 上的正式版」。
+      # dispatch 時 ref_name 是 `main`，set_version.py 看不懂會回 exit 2，
+      # 所以只在 tag 上跑。dispatch 打出來的執行檔停在 0.0.0+dev —— 那正好，
+      # 它本來就不該被當成正式版。
       - name: 從 tag 寫入版本號
+        if: startsWith(github.ref, 'refs/tags/v')
         run: uv run python set_version.py ${{ github.ref_name }}
 
       - name: 打包
         shell: pwsh
         run: |
+          # --onedir（**不是 --onefile**）：onefile 的執行檔會把自己解壓到 %TEMP%
+          # 再執行，那個「自解壓後執行」正是防毒對未簽章程式最常見的啟發式判準。
+          # 實際踩到：v0.2.1 的 onefile exe 被 Windows Defender 下載後直接刪掉。
+          # onedir 沒有那個行為，代價是要壓成 zip 發、使用者得先解壓縮。
+          # --noupx：PyInstaller 找得到 UPX 就會自動用，UPX 壓過的檔案誤判率更高。
+          #          GitHub runner 預設沒裝 UPX，這行是防它哪天被裝上去。
           # --windowed：雙擊時不要跳出黑色終端機視窗
           # --add-data：測試頁是執行時要讀的檔案，不打包進去 Milestone 1 會失敗
           #             （Windows 的分隔符號是分號，不是冒號）
           uv run --extra gui --with pyinstaller pyinstaller `
-            --onefile --windowed --noconfirm `
+            --onedir --windowed --noconfirm --noupx `
             --name "GPS-Simulator" `
             --add-data "gpssim/testpage;gpssim/testpage" `
             launch.py
@@ -129,9 +142,11 @@ jobs:
       - name: 打包版自我驗證
         shell: pwsh
         run: |
-          $exe = "dist\GPS-Simulator.exe"
+          # onedir 的產出是資料夾，執行檔在裡面一層 —— 不是 dist\GPS-Simulator.exe
+          $exe = "dist\GPS-Simulator\GPS-Simulator.exe"
           if (-not (Test-Path $exe)) { throw "沒有產出 $exe" }
-          Write-Host "產出 $exe（$([math]::Round((Get-Item $exe).Length / 1MB, 1)) MB）"
+          $size = (Get-ChildItem "dist\GPS-Simulator" -Recurse -File | Measure-Object Length -Sum).Sum
+          Write-Host "產出 $exe（整包 $([math]::Round($size / 1MB, 1)) MB）"
           # --windowed 的 exe 是 GUI 子系統：沒有主控台（看不到輸出），
           # 而且 **PowerShell 的 `&` 不會等它結束就返回**，$LASTEXITCODE 是空的。
           # 踩過一次，錯誤訊息長這樣：「打包版 detect 失敗（exit ）」。
@@ -149,15 +164,43 @@ jobs:
           if ($code -ne 0) { throw "打包版 maps 失敗（exit $code）" }
           Write-Host "打包版 detect 與 maps 都回 0"
 
+      # 掃自己打出來的東西，看 Defender 認不認。**只印結果、不擋 CI** ——
+      # 這是「有沒有改善」的觀測點，不是通過條件：特徵庫每天在動，
+      # 讓它決定能不能發版會讓發布隨機失敗。
+      # -SignatureUpdate 不能省：runner 映像上的特徵庫可能是幾天前的。
+      - name: Defender 掃一次（只觀測）
+        if: always()
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $mp = "$env:ProgramFiles\Windows Defender\MpCmdRun.exe"
+          if (-not (Test-Path $mp)) { Write-Host "::warning::找不到 MpCmdRun.exe，跳過掃描"; exit 0 }
+          & $mp -SignatureUpdate | Out-Null
+          $out = & $mp -Scan -ScanType 3 -File "$PWD\dist\GPS-Simulator" 2>&1 | Out-String
+          Write-Host $out
+          # 找到威脅時 MpCmdRun 回 2，乾淨是 0
+          if ($LASTEXITCODE -ne 0) { Write-Host "::warning::Defender 對打包產出有意見（exit $LASTEXITCODE）" }
+          else { Write-Host "Defender 掃描乾淨" }
+
+      # onedir 一定要壓成 zip 才發得出去（Releases 只收檔案，不收資料夾）。
+      # Compress-Archive 是內建的，不必另外裝東西。
+      - name: 壓成 zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist\GPS-Simulator" -DestinationPath "dist\GPS-Simulator-windows.zip" -Force
+          Write-Host "GPS-Simulator-windows.zip（$([math]::Round((Get-Item 'dist\GPS-Simulator-windows.zip').Length / 1MB, 1)) MB）"
+
       - uses: actions/upload-artifact@v4
         with:
           name: GPS-Simulator-windows
-          path: dist/GPS-Simulator.exe
+          path: dist/GPS-Simulator-windows.zip
           if-no-files-found: error
 
+      # dispatch 只是為了看打包與掃毒結果，不能順手發一版出去
       - name: 發布到 Releases
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/GPS-Simulator.exe
+          files: dist/GPS-Simulator-windows.zip
           generate_release_notes: true
           body_path: .github/release-notes.md
